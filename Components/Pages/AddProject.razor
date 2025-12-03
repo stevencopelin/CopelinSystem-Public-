@@ -1,0 +1,545 @@
+@page "/projects/add"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject ProjectService ProjectService
+@inject ClientService ClientService
+@inject ConsultantService ConsultantService
+@inject ContractorService ContractorService
+@inject EmployeeService EmployeeService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject AuthenticationService AuthService
+@inject PermissionService PermissionService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Add Project - Copelin Work Flow Management</PageTitle>
+
+<AuthorizeView>
+    <Authorized Context="authContext">
+        @if (canCreateProjects)
+        {
+            <div class="container-fluid mt-3">
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <h3><i class="fas fa-plus-circle"></i> Add New Project</h3>
+                        <p class="text-muted">Create a new project in the system</p>
+                    </div>
+                </div>
+
+                <div class="card card-outline card-primary">
+                    <div class="card-body">
+                        <EditForm Model="@newProject" OnValidSubmit="@HandleSubmit">
+                            <DataAnnotationsValidator />
+                            
+                            <!-- Basic Information -->
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <h5 class="mb-3"><i class="fas fa-info-circle"></i> Basic Information</h5>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Project Name <span class="text-danger">*</span></label>
+                                    <InputText @bind-Value="newProject.ProjectName" class="form-control" placeholder="Enter project name" />
+                                    <ValidationMessage For="@(() => newProject.ProjectName)" />
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Work Request (WR) <span class="text-danger">*</span></label>
+                                    <InputText @bind-Value="newProject.ProjectWr" class="@wrInputClass" placeholder="Enter WR number" @onfocusout="CheckWrDuplication" />
+                                    <ValidationMessage For="@(() => newProject.ProjectWr)" />
+                                    @if (!string.IsNullOrEmpty(wrErrorMessage))
+                                    {
+                                        <div class="invalid-feedback">@wrErrorMessage</div>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <label class="form-label">Description <span class="text-danger">*</span></label>
+                                    <InputTextArea @bind-Value="newProject.ProjectDescription" class="form-control" rows="3" placeholder="Enter project description" />
+                                    <ValidationMessage For="@(() => newProject.ProjectDescription)" />
+                                </div>
+                            </div>
+
+                            <!-- Location & Region -->
+                            <div class="row mt-4">
+                                <div class="col-md-12">
+                                    <h5 class="mb-3"><i class="fas fa-map-marker-alt"></i> Location & Region</h5>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">Region <span class="text-danger">*</span></label>
+                                    <InputSelect @bind-Value="selectedRegionId" @bind-Value:after="OnRegionChangedAsync" class="form-control">
+                                        <option value="">-- Select Region --</option>
+                                        @foreach (var region in regions)
+                                        {
+                                            <option value="@region.RegionId">@region.RegionName</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+
+                                <div class="col-md-8 mb-3">
+                                    <label class="form-label">Location <span class="text-danger">*</span></label> <small> - Example: Toowoomba State High School</small>
+                                    <InputText @bind-Value="newProject.ProjectLocation" class="form-control" placeholder="Eg: Toowoomba State High School" />
+                                    <ValidationMessage For="@(() => newProject.ProjectLocation)" />
+                                </div>
+                            </div>
+
+                            <!-- Client Information -->
+                            <div class="row mt-4">
+                                <div class="col-md-12">
+                                    <h5 class="mb-3"><i class="fas fa-building"></i> Client Information</h5>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Client</label>
+                                    <InputSelect @bind-Value="selectedClientId" @bind-Value:after="OnClientChangedAsync" class="form-control" disabled="@(string.IsNullOrEmpty(selectedRegionId))">
+                                        <option value="">-- Select Client --</option>
+                                        @foreach (var client in filteredClients)
+                                        {
+                                            <option value="@client.ClientId">@client.ClientName</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Client Contact</label>
+                                    <InputSelect @bind-Value="selectedContactId" @bind-Value:after="OnContactChangedAsync" class="form-control" disabled="@(string.IsNullOrEmpty(selectedClientId))">
+                                        <option value="">-- Select Contact --</option>
+                                        @foreach (var contact in filteredContacts)
+                                        {
+                                            <option value="@contact.ClientContactId">@contact.ContactName</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+                            </div>
+
+                            <!-- Project Details -->
+                            <div class="row mt-4">
+                                <div class="col-md-12">
+                                    <h5 class="mb-3"><i class="fas fa-clipboard-list"></i> Project Details</h5>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">Status</label>
+                                    <InputSelect @bind-Value="newProject.ProjectStatus" class="form-control">
+                                        <option value="">-- Select Status --</option>
+                                        <option value="0">In Progress</option>
+                                        <option value="1">On Hold</option>
+                                        <option value="2">Completed</option>
+                                        <option value="3">Cancelled</option>
+                                    </InputSelect>
+                                </div>
+
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">Consultant</label>
+                                    <InputSelect @bind-Value="selectedConsultantId" class="form-control">
+                                        <option value="">-- Select Consultant --</option>
+                                        @foreach (var consultant in consultants)
+                                        {
+                                            <option value="@consultant.ConsultantId">@consultant.BusinessName</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">Contractor</label>
+                                    <InputSelect @bind-Value="selectedContractorId" class="form-control">
+                                        <option value="">-- Select Contractor --</option>
+                                        @foreach (var contractor in contractors)
+                                        {
+                                            <option value="@contractor.ContractorId">@contractor.BusinessName</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+                            </div>
+
+                            <!-- Works Type -->
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Works Type</label>
+                                    <InputSelect @bind-Value="newProject.ProjectWorkstype" class="form-control">
+                                        <option value="">-- Select Works Type --</option>
+                                        <option value="Fee Proposal">Fee Proposal</option>
+                                        <option value="Delivery">Delivery</option>
+                                        <option value="Indicative">Indicative</option>
+                                        <option value="Quantity Survey">Quantity Survey</option>
+                                        <option value="Other Works">Other Works</option>
+                                    </InputSelect>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Componentisation</label>
+                                    <InputSelect @bind-Value="newProject.ProjectComponentisation" class="form-control">
+                                        <option value="">-- Select --</option>
+                                        <option value="Yes">Yes</option>
+                                        <option value="No">No</option>
+                                    </InputSelect>
+                                </div>
+                            </div>
+
+                            <!-- Dates -->
+                            <div class="row mt-4">
+                                <div class="col-md-12">
+                                    <h5 class="mb-3"><i class="fas fa-calendar-alt"></i> Important Dates</h5>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label">Start Date</label>
+                                    <InputDate @bind-Value="newProject.ProjectStartDate" class="form-control" />
+                                </div>
+
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label">End Date</label>
+                                    <InputDate @bind-Value="newProject.ProjectEndDate" class="form-control" />
+                                </div>
+
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label">WR Requested</label>
+                                    <InputDate @bind-Value="newProject.ProjectWrRequested" class="form-control" />
+                                </div>
+
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label">Client Required By <span class="text-danger">*</span></label>
+                                    <InputDate @bind-Value="newProject.ProjectClientRequired" class="form-control" />
+                                    <ValidationMessage For="@(() => newProject.ProjectClientRequired)" />
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label">Client Completion Date <span class="text-danger">*</span></label>
+                                    <InputDate @bind-Value="newProject.ProjectClientCompletion" class="form-control" />
+                                    <ValidationMessage For="@(() => newProject.ProjectClientCompletion)" />
+                                </div>
+                            </div>
+
+                            <!-- Pricing -->
+                            <div class="row mt-4">
+                                <div class="col-md-12">
+                                    <h5 class="mb-3"><i class="fas fa-dollar-sign"></i> Pricing</h5>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Indicative Price</label>
+                                    <InputText @bind-Value="newProject.ProjectIndicative" class="form-control" placeholder="$0.00" />
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Actual Price</label>
+                                    <InputText @bind-Value="newProject.ProjectActualPrice" class="form-control" placeholder="$0.00" />
+                                </div>
+                            </div>
+
+                            <!-- Team Assignment -->
+                            @if (currentUser != null && AuthService.IsManagerOrHigher(currentUser))
+                            {
+                                <div class="row mt-4">
+                                    <div class="col-md-12">
+                                        <h5 class="mb-3"><i class="fas fa-users"></i> Project Team</h5>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-12 mb-3">
+                                        <label class="form-label">Assign Team Members (Hold Ctrl/Cmd to select multiple)</label>
+                                        <select multiple class="form-control" @bind="SelectedUserIds" style="height: 150px;" disabled="@(string.IsNullOrEmpty(selectedRegionId))">
+                                            @if (filteredUsers != null && filteredUsers.Any())
+                                            {
+                                                foreach (var user in filteredUsers)
+                                                {
+                                                    <option value="@user.UserId">@user.Firstname @user.Lastname</option>
+                                                }
+                                            }
+                                        </select>
+                                        @if (string.IsNullOrEmpty(selectedRegionId))
+                                        {
+                                            <small class="form-text text-muted">Please select a region first to see available team members.</small>
+                                        }
+                                        <small class="form-text text-muted">Assign users to this project. Selected users will see this project on their dashboard.</small>
+                                    </div>
+                                </div>
+                            }
+
+                            <!-- Action Buttons -->
+                            <div class="row mt-4">
+                                <div class="col-md-12">
+                                    <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                                        <i class="fas @(isSubmitting ? "fa-spinner fa-spin" : "fa-save")"></i>
+                                        @(isSubmitting ? "Creating..." : "Create Project")
+                                    </button>
+                                    <button type="button" class="btn btn-secondary ml-2" @onclick="Cancel">
+                                        <i class="fas fa-times"></i> Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="text-center mt-5">
+                <h3>Access Denied</h3>
+                <p>You do not have permission to create projects.</p>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="text-center mt-5">
+            <h3>Please log in to access this page.</h3>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private ProjectList newProject = new ProjectList();
+    private User? currentUser;
+    private bool canCreateProjects = false;
+    private bool isSubmitting = false;
+    private string wrErrorMessage = "";
+    private string wrInputClass => string.IsNullOrEmpty(wrErrorMessage) ? "form-control" : "form-control is-invalid";
+
+    // Dropdown data
+    private List<Region> regions = new();
+    private List<Client> allClients = new();
+    private List<Client> filteredClients = new();
+    private List<ClientContact> filteredContacts = new();
+    private List<Consultant> consultants = new();
+    private List<Contractor> contractors = new();
+    private List<User>? allUsers;
+    private List<User> filteredUsers = new();
+
+    private string[] SelectedUserIds
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(newProject?.ProjectUserIds))
+                return Array.Empty<string>();
+            return newProject.ProjectUserIds.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        }
+        set
+        {
+            if (newProject != null)
+            {
+                newProject.ProjectUserIds = string.Join(",", value);
+            }
+        }
+    }
+
+    // Selected values
+    private string selectedRegionId = "";
+    private string selectedClientId = "";
+    private string selectedContactId = "";
+    private string selectedConsultantId = "";
+    private string selectedContractorId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId");
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                currentUser = await AuthService.GetUserById(userId);
+                if (currentUser != null)
+                {
+                    canCreateProjects = await PermissionService.UserHasPermission(currentUser, "CreateProjects");
+                }
+            }
+        }
+
+        if (canCreateProjects)
+        {
+            await LoadDropdownData();
+            
+            // Load all users for Project Team assignment (only needed for Managers+)
+            if (currentUser != null && AuthService.IsManagerOrHigher(currentUser))
+            {
+                allUsers = await AuthService.GetAllUsers();
+            }
+        }
+    }
+
+    private async Task LoadDropdownData()
+    {
+        regions = await EmployeeService.GetAllRegions();
+        allClients = await ClientService.GetAllClients();
+        // filteredClients = allClients; // Removed to enforce cascading selection
+        consultants = await ConsultantService.GetAllConsultants();
+        contractors = await ContractorService.GetAllContractors();
+    }
+
+    private async Task OnRegionChangedAsync()
+    {
+        if (!string.IsNullOrEmpty(selectedRegionId) && int.TryParse(selectedRegionId, out int regionId))
+        {
+            // Get region name
+            var region = regions.FirstOrDefault(r => r.RegionId == regionId);
+            newProject.ProjectRegion = region?.RegionName;
+            
+            // Filter clients by region
+            filteredClients = await ClientService.GetClientsByRegion(regionId);
+            
+            // Filter users by region (for team assignment)
+            if (allUsers != null && region != null)
+            {
+                filteredUsers = allUsers.Where(u => u.Region == region.RegionName).ToList();
+            }
+        }
+        else
+        {
+            newProject.ProjectRegion = null;
+            filteredClients = new List<Client>();
+            filteredUsers = new List<User>();
+        }
+        
+        // Reset client and contact selections
+        selectedClientId = "";
+        selectedContactId = "";
+        filteredContacts = new List<ClientContact>();
+        newProject.ProjectClient = null;
+        newProject.ProjectContact = null;
+        newProject.ProjectContactEmail = null;
+    }
+
+    private async Task OnClientChangedAsync()
+    {
+        if (!string.IsNullOrEmpty(selectedClientId) && int.TryParse(selectedClientId, out int clientId))
+        {
+            // Get client name
+            var client = filteredClients.FirstOrDefault(c => c.ClientId == clientId);
+            newProject.ProjectClient = client?.ClientName;
+            
+            // Load contacts for this client
+            filteredContacts = await ClientService.GetClientContactsByClient(clientId);
+        }
+        else
+        {
+            newProject.ProjectClient = null;
+            filteredContacts = new List<ClientContact>();
+        }
+        
+        // Reset contact selection
+        selectedContactId = "";
+        newProject.ProjectContact = null;
+        newProject.ProjectContactEmail = null;
+    }
+
+    private void OnContactChangedAsync()
+    {
+        if (!string.IsNullOrEmpty(selectedContactId) && int.TryParse(selectedContactId, out int contactId))
+        {
+            var contact = filteredContacts.FirstOrDefault(c => c.ClientContactId == contactId);
+            newProject.ProjectContact = contact?.ContactName;
+            newProject.ProjectContactEmail = contact?.ContactEmail;
+        }
+        else
+        {
+            newProject.ProjectContact = null;
+            newProject.ProjectContactEmail = null;
+        }
+    }
+
+    private async Task CheckWrDuplication()
+    {
+        wrErrorMessage = "";
+        if (!string.IsNullOrWhiteSpace(newProject.ProjectWr))
+        {
+            bool exists = await ProjectService.CheckProjectWrExists(newProject.ProjectWr);
+            if (exists)
+            {
+                wrErrorMessage = "A project with this Work Request (WR) number already exists.";
+            }
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (isSubmitting) return;
+        
+        // Check for duplicates one last time
+        await CheckWrDuplication();
+        if (!string.IsNullOrEmpty(wrErrorMessage))
+        {
+            return;
+        }
+        
+        isSubmitting = true;
+        
+        try
+        {
+            // Set consultant name if selected
+            if (!string.IsNullOrEmpty(selectedConsultantId) && int.TryParse(selectedConsultantId, out int consultantId))
+            {
+                var consultant = consultants.FirstOrDefault(c => c.ConsultantId == consultantId);
+                newProject.ProjectConsultant = consultant?.BusinessName;
+            }
+            
+            // Set contractor name if selected
+            if (!string.IsNullOrEmpty(selectedContractorId) && int.TryParse(selectedContractorId, out int contractorId))
+            {
+                var contractor = contractors.FirstOrDefault(c => c.ContractorId == contractorId);
+                newProject.ProjectContractor = contractor?.BusinessName;
+            }
+            
+            // Set default status if not set
+            if (!newProject.ProjectStatus.HasValue)
+            {
+                newProject.ProjectStatus = 0; // In Progress
+            }
+            
+            // Validate required date fields
+            if (!newProject.ProjectClientRequired.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Client Required By date is required.");
+                return;
+            }
+            
+            if (!newProject.ProjectClientCompletion.HasValue)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Client Completion Date is required.");
+                return;
+            }
+            
+            // Create the project
+            var createdProject = await ProjectService.CreateProject(newProject);
+            
+            await JSRuntime.InvokeVoidAsync("alert", "Project created successfully!");
+            
+            // Navigate to the project view page
+            Navigation.NavigateTo($"/projects/view/{createdProject.ProjectId}");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error creating project: {ex.Message}");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/");
+    }
+}
