@@ -4,7 +4,7 @@ trigger:
     - releases/*
  paths:
   include:
-    - ../*
+    - ./*
 
 pool:
   vmImage: 'windows-latest'
