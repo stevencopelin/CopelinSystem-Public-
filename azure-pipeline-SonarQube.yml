@@ -27,7 +27,7 @@ jobs:
           packageType: 'sdk'
           version: '10.0.x'
           includePreviewVersions: false
-      - task: SonarQubePrepare@5
+      - task: SonarQubePrepare@7
         inputs:
           SonarQube: 'SonarQube scanner-EWS - Estimating Workflow System'
           scannerMode: 'MSBuild'
@@ -38,9 +38,9 @@ jobs:
           solutionToRestore: CopelinSystem.slnx
           websiteProjectFolder: $(Build.SourcesDirectory)
           websiteProjectFile: CopelinSystem.csproj
-      - task: SonarQubeAnalyze@5
+      - task: SonarQubeAnalyze@7
         inputs:
           jdkversion: 'JAVA_HOME'
-      - task: SonarQubePublish@5
+      - task: SonarQubePublish@7
         inputs:
           pollingTimeoutSec: '300'
