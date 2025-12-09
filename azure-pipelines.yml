@@ -22,7 +22,8 @@ extends:
     build:
       - job: Build
         steps:
-          - template: /build/website-netframework.yml@templates
+          - template: /build/website-dotnet.yml@templates
             parameters:
               solutionToRestore: CopelinSystem.slnx
+              websiteProjectFolder: $(Build.SourcesDirectory)
               websiteProjectFile: CopelinSystem.csproj
