@@ -18,6 +18,9 @@ resources:
 
 jobs:
   - job: BuildWithSonarQube
+    displayName: SonarQube Analysis
+    pool:
+        name: 'Azure Deployments (Windows)'
     steps:
       - task: SonarQubePrepare@5
         inputs:
