@@ -1,0 +1,725 @@
+@page "/clients"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject ClientService ClientService
+@inject EmployeeService EmployeeService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject AuthenticationService AuthService
+@inject PermissionService PermissionService
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Client Management - Copelin Work Flow Management</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        @if (canManageClients)
+        {
+            <div class="container-fluid mt-3">
+                <!-- Header -->
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <h3><i class="fas fa-building"></i> Client Management</h3>
+                        <p class="text-muted">Manage regions, clients, and client contacts for the cascading lookup system</p>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <ul class="nav nav-tabs" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link @(activeTab == "regions" ? "active" : "")" @onclick='() => SetActiveTab("regions")' style="cursor: pointer;">
+                            <i class="fas fa-map-marker-alt"></i> Regions
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @(activeTab == "clients" ? "active" : "")" @onclick='() => SetActiveTab("clients")' style="cursor: pointer;">
+                            <i class="fas fa-building"></i> Clients
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @(activeTab == "contacts" ? "active" : "")" @onclick='() => SetActiveTab("contacts")' style="cursor: pointer;">
+                            <i class="fas fa-user"></i> Client Contacts
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Tab Content -->
+                <div class="tab-content mt-3">
+                    <!-- REGIONS TAB -->
+                    @if (activeTab == "regions")
+                    {
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h4 class="card-title mb-0">Regions</h4>
+                                    </div>
+                                    <div class="col-md-6 text-right">
+                                        <button class="btn btn-success" @onclick="OpenAddRegionModal">
+                                            <i class="fas fa-plus"></i> Add Region
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                @if (regions == null)
+                                {
+                                    <p>Loading regions...</p>
+                                }
+                                else if (!regions.Any())
+                                {
+                                    <p class="text-muted">No regions found. Click "Add Region" to create one.</p>
+                                }
+                                else
+                                {
+                                    <table class="table table-striped table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Region Name</th>
+                                                <th>Clients</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var region in regions)
+                                            {
+                                                <tr>
+                                                    <td>@region.RegionName</td>
+                                                    <td>@(clientCountByRegion.ContainsKey(region.RegionName) ? clientCountByRegion[region.RegionName] : 0)</td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-primary" @onclick="() => OpenEditRegionModal(region)">
+                                                            <i class="fas fa-edit"></i> Edit
+                                                        </button>
+                                                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteRegion(region.RegionId)">
+                                                            <i class="fas fa-trash"></i> Delete
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <!-- CLIENTS TAB -->
+                    @if (activeTab == "clients")
+                    {
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h4 class="card-title mb-0">Clients</h4>
+                                    </div>
+                                    <div class="col-md-6 text-right">
+                                        <button class="btn btn-success" @onclick="OpenAddClientModal">
+                                            <i class="fas fa-plus"></i> Add Client
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                @if (clients == null)
+                                {
+                                    <p>Loading clients...</p>
+                                }
+                                else if (!clients.Any())
+                                {
+                                    <p class="text-muted">No clients found. Click "Add Client" to create one.</p>
+                                }
+                                else
+                                {
+                                    <table class="table table-striped table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Client Code</th>
+                                                <th>Client Name</th>
+                                                <th>Region</th>
+                                                <th>Contacts</th>
+                                                <th>Status</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var client in clients)
+                                            {
+                                                <tr>
+                                                    <td>@client.ClientCode</td>
+                                                    <td>@client.ClientName</td>
+                                                    <td>@(client.Region?.RegionName ?? "-")</td>
+                                                    <td>@client.ClientContacts.Count(c => c.IsActive)</td>
+                                                    <td>
+                                                        @if (client.IsActive)
+                                                        {
+                                                            <span class="badge badge-success">Active</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge badge-secondary">Inactive</span>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-primary" @onclick="() => OpenEditClientModal(client)">
+                                                            <i class="fas fa-edit"></i> Edit
+                                                        </button>
+                                                        <button class="btn btn-sm btn-info" @onclick="() => ViewClientContacts(client)">
+                                                            <i class="fas fa-users"></i> Contacts
+                                                        </button>
+                                                        @if (client.IsActive)
+                                                        {
+                                                            <button class="btn btn-sm btn-warning" @onclick="() => DeactivateClient(client.ClientId)">
+                                                                <i class="fas fa-ban"></i> Deactivate
+                                                            </button>
+                                                        }
+                                                        else
+                                                        {
+                                                            <button class="btn btn-sm btn-success" @onclick="() => ActivateClient(client.ClientId)">
+                                                                <i class="fas fa-check"></i> Activate
+                                                            </button>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <!-- CONTACTS TAB -->
+                    @if (activeTab == "contacts")
+                    {
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h4 class="card-title mb-0">Client Contacts</h4>
+                                    </div>
+                                    <div class="col-md-6 text-right">
+                                        <select class="form-control d-inline-block w-auto mr-2" @bind="selectedClientForContacts" @bind:after="LoadContactsForSelectedClient">
+                                            <option value="0">-- Filter by Client --</option>
+                                            @if (clients != null)
+                                            {
+                                                foreach (var client in clients.Where(c => c.IsActive))
+                                                {
+                                                    <option value="@client.ClientId">@client.ClientCode - @client.ClientName</option>
+                                                }
+                                            }
+                                        </select>
+                                        <button class="btn btn-success" @onclick="OpenAddContactModal" disabled="@(selectedClientForContacts == 0)">
+                                            <i class="fas fa-plus"></i> Add Contact
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                @if (selectedClientForContacts == 0)
+                                {
+                                    <p class="text-muted">Please select a client to view and manage contacts.</p>
+                                }
+                                else if (filteredContacts == null)
+                                {
+                                    <p>Loading contacts...</p>
+                                }
+                                else if (!filteredContacts.Any())
+                                {
+                                    <p class="text-muted">No contacts found for this client. Click "Add Contact" to create one.</p>
+                                }
+                                else
+                                {
+                                    <table class="table table-striped table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Contact Name</th>
+                                                <th>Email</th>
+                                                <th>Phone</th>
+                                                <th>Primary</th>
+                                                <th>Status</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var contact in filteredContacts)
+                                            {
+                                                <tr>
+                                                    <td>@contact.ContactName</td>
+                                                    <td>@(contact.ContactEmail ?? "-")</td>
+                                                    <td>@(contact.ContactPhone ?? "-")</td>
+                                                    <td>
+                                                        @if (contact.IsPrimary)
+                                                        {
+                                                            <span class="badge badge-primary">Primary</span>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        @if (contact.IsActive)
+                                                        {
+                                                            <span class="badge badge-success">Active</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge badge-secondary">Inactive</span>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-primary" @onclick="() => OpenEditContactModal(contact)">
+                                                            <i class="fas fa-edit"></i> Edit
+                                                        </button>
+                                                        @if (contact.IsActive)
+                                                        {
+                                                            <button class="btn btn-sm btn-warning" @onclick="() => DeactivateContact(contact.ClientContactId)">
+                                                                <i class="fas fa-ban"></i> Deactivate
+                                                            </button>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <!-- REGION MODAL -->
+                @if (showRegionModal)
+                {
+                    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">@(isEditingRegion ? "Edit Region" : "Add Region")</h5>
+                                    <button type="button" class="close" @onclick="CloseRegionModal">
+                                        <span>&times;</span>
+                                    </button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="form-group">
+                                        <label><strong>Region Name *</strong></label>
+                                        <input type="text" class="form-control" @bind="currentRegion.RegionName" placeholder="e.g., SEQ - South East Qld" />
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" @onclick="CloseRegionModal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" @onclick="SaveRegion">
+                                        <i class="fas fa-save"></i> Save
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <!-- CLIENT MODAL -->
+                @if (showClientModal)
+                {
+                    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">@(isEditingClient ? "Edit Client" : "Add Client")</h5>
+                                    <button type="button" class="close" @onclick="CloseClientModal">
+                                        <span>&times;</span>
+                                    </button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label><strong>Client Code *</strong></label>
+                                                <input type="text" class="form-control" @bind="currentClient.ClientCode" placeholder="e.g., ABC" />
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label><strong>Region</strong></label>
+                                                <select class="form-control" @bind="currentClient.RegionId">
+                                                    <option value="">-- Select Region --</option>
+                                                    @if (regions != null)
+                                                    {
+                                                        foreach (var region in regions)
+                                                        {
+                                                            <option value="@region.RegionId">@region.RegionName</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label><strong>Client Name *</strong></label>
+                                        <input type="text" class="form-control" @bind="currentClient.ClientName" placeholder="e.g., ABC Corporation" />
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" @onclick="CloseClientModal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" @onclick="SaveClient">
+                                        <i class="fas fa-save"></i> Save
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                <!-- CONTACT MODAL -->
+                @if (showContactModal)
+                {
+                    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">@(isEditingContact ? "Edit Contact" : "Add Contact")</h5>
+                                    <button type="button" class="close" @onclick="CloseContactModal">
+                                        <span>&times;</span>
+                                    </button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="form-group">
+                                        <label><strong>Contact Name *</strong></label>
+                                        <input type="text" class="form-control" @bind="currentContact.ContactName" placeholder="e.g., John Smith" />
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label><strong>Email</strong></label>
+                                                <input type="email" class="form-control" @bind="currentContact.ContactEmail" placeholder="john@example.com" />
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label><strong>Phone</strong></label>
+                                                <input type="text" class="form-control" @bind="currentContact.ContactPhone" placeholder="0400 000 000" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <div class="custom-control custom-checkbox">
+                                            <input type="checkbox" class="custom-control-input" id="isPrimary" @bind="currentContact.IsPrimary" />
+                                            <label class="custom-control-label" for="isPrimary">
+                                                <strong>Set as Primary Contact</strong>
+                                                <small class="text-muted d-block">Only one contact can be primary per client</small>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" @onclick="CloseContactModal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" @onclick="SaveContact">
+                                        <i class="fas fa-save"></i> Save
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="text-center mt-5">
+                <h3>Access Denied</h3>
+                <p>You do not have permission to access this page.</p>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="text-center mt-5">
+            <h3>Please log in to access this page.</h3>
+            <a href="/login" class="btn btn-primary">Go to Login</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private User? currentUser;
+    private bool canManageClients = false;
+    private string activeTab = "regions";
+
+    // Data lists
+    private List<Region>? regions;
+    private List<Client>? clients;
+    private List<ClientContact>? filteredContacts;
+    private Dictionary<string, int> clientCountByRegion = new();
+
+    // Modal states
+    private bool showRegionModal = false;
+    private bool showClientModal = false;
+    private bool showContactModal = false;
+    private bool isEditingRegion = false;
+    private bool isEditingClient = false;
+    private bool isEditingContact = false;
+
+    // Current entities
+    private Region currentRegion = new();
+    private Client currentClient = new();
+    private ClientContact currentContact = new();
+
+    // Contact filtering
+    private int selectedClientForContacts = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId");
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                currentUser = await AuthService.GetUserById(userId);
+                if (currentUser != null)
+                {
+                    canManageClients = await PermissionService.UserHasPermission(currentUser, "ManageClients");
+                }
+            }
+        }
+
+        if (canManageClients)
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task LoadData()
+    {
+        regions = await EmployeeService.GetAllRegions();
+        clients = await ClientService.GetAllClients();
+        clientCountByRegion = await EmployeeService.GetEmployeeCountByRegion();
+    }
+
+    private void SetActiveTab(string tab)
+    {
+        activeTab = tab;
+    }
+
+    // ==================== REGION METHODS ====================
+
+    private void OpenAddRegionModal()
+    {
+        currentRegion = new Region();
+        isEditingRegion = false;
+        showRegionModal = true;
+    }
+
+    private void OpenEditRegionModal(Region region)
+    {
+        currentRegion = new Region
+        {
+            RegionId = region.RegionId,
+            RegionName = region.RegionName
+        };
+        isEditingRegion = true;
+        showRegionModal = true;
+    }
+
+    private void CloseRegionModal()
+    {
+        showRegionModal = false;
+        currentRegion = new();
+    }
+
+    private async Task SaveRegion()
+    {
+        if (string.IsNullOrWhiteSpace(currentRegion.RegionName))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Region name is required");
+            return;
+        }
+
+        // Check for duplicates
+        bool exists = await EmployeeService.RegionNameExists(currentRegion.RegionName, isEditingRegion ? currentRegion.RegionId : null);
+        if (exists)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "A region with this name already exists");
+            return;
+        }
+
+        if (isEditingRegion)
+        {
+            await EmployeeService.UpdateRegion(currentRegion);
+        }
+        else
+        {
+            await EmployeeService.AddRegion(currentRegion);
+        }
+
+        await LoadData();
+        CloseRegionModal();
+    }
+
+    private async Task DeleteRegion(int regionId)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this region? This will only work if no clients are assigned to it.");
+        if (confirmed)
+        {
+            bool success = await EmployeeService.DeleteRegion(regionId);
+            if (success)
+            {
+                await LoadData();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Cannot delete region. It may have clients assigned to it.");
+            }
+        }
+    }
+
+    // ==================== CLIENT METHODS ====================
+
+    private void OpenAddClientModal()
+    {
+        currentClient = new Client();
+        isEditingClient = false;
+        showClientModal = true;
+    }
+
+    private void OpenEditClientModal(Client client)
+    {
+        currentClient = new Client
+        {
+            ClientId = client.ClientId,
+            ClientCode = client.ClientCode,
+            ClientName = client.ClientName,
+            RegionId = client.RegionId,
+            IsActive = client.IsActive
+        };
+        isEditingClient = true;
+        showClientModal = true;
+    }
+
+    private void CloseClientModal()
+    {
+        showClientModal = false;
+        currentClient = new();
+    }
+
+    private async Task SaveClient()
+    {
+        if (string.IsNullOrWhiteSpace(currentClient.ClientCode) || string.IsNullOrWhiteSpace(currentClient.ClientName))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Client code and name are required");
+            return;
+        }
+
+        if (isEditingClient)
+        {
+            await ClientService.UpdateClient(currentClient);
+        }
+        else
+        {
+            await ClientService.AddClient(currentClient);
+        }
+
+        await LoadData();
+        CloseClientModal();
+    }
+
+    private async Task DeactivateClient(int clientId)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Deactivate this client? It will no longer appear in dropdowns.");
+        if (confirmed)
+        {
+            await ClientService.DeleteClient(clientId);
+            await LoadData();
+        }
+    }
+
+    private async Task ActivateClient(int clientId)
+    {
+        var client = clients?.FirstOrDefault(c => c.ClientId == clientId);
+        if (client != null)
+        {
+            client.IsActive = true;
+            await ClientService.UpdateClient(client);
+            await LoadData();
+        }
+    }
+
+    private async Task ViewClientContacts(Client client)
+    {
+        selectedClientForContacts = client.ClientId;
+        activeTab = "contacts";
+        await LoadContactsForSelectedClient();
+    }
+
+    // ==================== CONTACT METHODS ====================
+
+    private async Task LoadContactsForSelectedClient()
+    {
+        if (selectedClientForContacts > 0)
+        {
+            filteredContacts = await ClientService.GetClientContactsByClient(selectedClientForContacts);
+        }
+        else
+        {
+            filteredContacts = new List<ClientContact>();
+        }
+    }
+
+    private void OpenAddContactModal()
+    {
+        currentContact = new ClientContact
+        {
+            ClientId = selectedClientForContacts
+        };
+        isEditingContact = false;
+        showContactModal = true;
+    }
+
+    private void OpenEditContactModal(ClientContact contact)
+    {
+        currentContact = new ClientContact
+        {
+            ClientContactId = contact.ClientContactId,
+            ClientId = contact.ClientId,
+            ContactName = contact.ContactName,
+            ContactEmail = contact.ContactEmail,
+            ContactPhone = contact.ContactPhone,
+            IsPrimary = contact.IsPrimary,
+            IsActive = contact.IsActive
+        };
+        isEditingContact = true;
+        showContactModal = true;
+    }
+
+    private void CloseContactModal()
+    {
+        showContactModal = false;
+        currentContact = new();
+    }
+
+    private async Task SaveContact()
+    {
+        if (string.IsNullOrWhiteSpace(currentContact.ContactName))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Contact name is required");
+            return;
+        }
+
+        if (isEditingContact)
+        {
+            await ClientService.UpdateClientContact(currentContact);
+        }
+        else
+        {
+            await ClientService.AddClientContact(currentContact);
+        }
+
+        await LoadContactsForSelectedClient();
+    }
+
+    private async Task DeactivateContact(int contactId)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Deactivate this contact?");
+        if (confirmed)
+        {
+            await ClientService.DeleteClientContact(contactId);
+            await LoadContactsForSelectedClient();
+        }
+    }
+}

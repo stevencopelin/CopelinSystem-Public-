@@ -1,0 +1,158 @@
+@page "/debug-permissions"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject AuthenticationStateProvider AuthStateProvider
+@inject AuthenticationService AuthService
+@inject PermissionService PermissionService
+@rendermode InteractiveServer
+
+<PageTitle>Permission Debug - Copelin Work Flow Management</PageTitle>
+
+<div class="container mt-4">
+    <h3>Permission Debug Information</h3>
+    
+    @if (currentUser != null)
+    {
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>Current User Information</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>User ID:</strong> @currentUser.UserId</p>
+                <p><strong>Name:</strong> @currentUser.DisplayName</p>
+                <p><strong>Email:</strong> @currentUser.Email</p>
+                <p><strong>UserType (byte):</strong> @currentUser.UserType</p>
+                <p><strong>Role (enum):</strong> @currentUser.Role</p>
+                <p><strong>Region:</strong> @currentUser.Region</p>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>Permission Checks</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Permission</th>
+                            <th>Has Permission?</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var perm in permissionChecks)
+                        {
+                            <tr>
+                                <td>@perm.Key</td>
+                                <td>
+                                    @if (perm.Value)
+                                    {
+                                        <span class="badge badge-success">YES</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-danger">NO</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>All Granted Permissions for Role: @currentUser.Role</h5>
+            </div>
+            <div class="card-body">
+                @if (allPermissions != null && allPermissions.Any())
+                {
+                    <ul>
+                        @foreach (var perm in allPermissions.Where(p => p.IsGranted))
+                        {
+                            <li>@perm.PermissionName - @perm.DisplayName</li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="text-danger">No permissions granted to this role!</p>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5>Authentication State Claims</h5>
+            </div>
+            <div class="card-body">
+                @if (authClaims != null)
+                {
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Claim Type</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var claim in authClaims)
+                            {
+                                <tr>
+                                    <td>@claim.Type</td>
+                                    <td>@claim.Value</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-warning">
+            <p>No user found or not authenticated.</p>
+        </div>
+    }
+</div>
+
+@code {
+    private User? currentUser;
+    private Dictionary<string, bool> permissionChecks = new();
+    private List<PermissionWithStatus>? allPermissions;
+    private List<System.Security.Claims.Claim>? authClaims;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        // Get claims
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            authClaims = user.Claims.ToList();
+            
+            var userIdClaim = user.FindFirst("UserId");
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                currentUser = await AuthService.GetUserById(userId);
+                
+                if (currentUser != null)
+                {
+                    // Check specific permissions
+                    permissionChecks["ManageUsers"] = await PermissionService.UserHasPermission(currentUser, "ManageUsers");
+                    permissionChecks["ManagePermissions"] = await PermissionService.UserHasPermission(currentUser, "ManagePermissions");
+                    permissionChecks["ManageEmployees"] = await PermissionService.UserHasPermission(currentUser, "ManageEmployees");
+                    permissionChecks["ManageClients"] = await PermissionService.UserHasPermission(currentUser, "ManageClients");
+                    permissionChecks["ViewProjects"] = await PermissionService.UserHasPermission(currentUser, "ViewProjects");
+                    permissionChecks["EditProjects"] = await PermissionService.UserHasPermission(currentUser, "EditProjects");
+                    
+                    // Get all permissions for this role
+                    allPermissions = await PermissionService.GetRolePermissions(currentUser.Role);
+                }
+            }
+        }
+    }
+}
