@@ -1,0 +1,29 @@
+trigger:
+ branches:
+  include:
+    - releases/*
+ paths:
+  include:
+    - ./*
+
+pool:
+  vmImage: 'windows-latest'
+
+resources:
+ repositories:
+   - repository: templates
+     type: git
+     name: Shared Packages/PipelineTemplates
+     ref: refs/heads/main
+
+extends:
+  template: /pipelines/cicd-template.yml@templates
+  parameters:
+    build:
+      - job: Build
+        steps:
+          - template: /build/website-dotnet.yml@templates
+            parameters:
+              solutionToRestore: CopelinSystem.slnx
+              websiteProjectFolder: $(Build.SourcesDirectory)
+              websiteProjectFile: CopelinSystem.csproj

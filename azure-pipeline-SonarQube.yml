@@ -1,0 +1,46 @@
+trigger:
+  branches:
+    include:
+      - releases/*
+  paths:
+    include:
+      - ./*
+
+pool:
+  vmImage: 'windows-latest'
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: Shared Packages/PipelineTemplates
+      ref: refs/heads/main
+
+jobs:
+  - job: BuildWithSonarQube
+    displayName: SonarQube Analysis
+    pool:
+        name: 'Azure Deployments (Windows)'
+    steps:
+      - task: UseDotNet@2
+        inputs:
+          packageType: 'sdk'
+          version: '10.0.x'
+          includePreviewVersions: false
+      - task: SonarQubePrepare@5
+        inputs:
+          SonarQube: 'SonarQube scanner-EWS - Estimating Workflow System'
+          scannerMode: 'MSBuild'
+          projectKey: 'EWS_-_Estimating_Workflow_System_EWS_-_Estimating_Workflow_System_fc96f3ec-f833-4ad5-846a-b468e05cf889'
+          projectName: 'EWS - Estimating Workflow System'
+      - template: /build/website-dotnet.yml@templates
+        parameters:
+          solutionToRestore: CopelinSystem.slnx
+          websiteProjectFolder: $(Build.SourcesDirectory)
+          websiteProjectFile: CopelinSystem.csproj
+      - task: SonarQubeAnalyze@5
+        inputs:
+          jdkversion: 'JAVA_HOME'
+      - task: SonarQubePublish@5
+        inputs:
+          pollingTimeoutSec: '300'
