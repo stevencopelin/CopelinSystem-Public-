@@ -30,7 +30,7 @@ jobs:
       - task: SonarQubePrepare@7
         inputs:
           SonarQube: 'SonarQube scanner-EWS - Estimating Workflow System'
-          scannerMode: 'MSBuild'
+          scannerMode: 'dotnet'
           projectKey: 'EWS_-_Estimating_Workflow_System_EWS_-_Estimating_Workflow_System_fc96f3ec-f833-4ad5-846a-b468e05cf889'
           projectName: 'EWS - Estimating Workflow System'
       - template: /build/website-dotnet.yml@templates
