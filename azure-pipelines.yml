@@ -27,3 +27,16 @@ extends:
               solutionToRestore: CopelinSystem.slnx
               websiteProjectFolder: $(Build.SourcesDirectory)
               websiteProjectFile: CopelinSystem.csproj
+    
+    deployDEV:
+      - template: /deploy/website-iis-dotnet.yml@templates
+        parameters:
+          environment: DEV
+          bindings:             
+            - hostname: EWS-DEV.hpw.qld.gov.au
+          websiteName: EWS-DEV.hpw.qld.gov.au
+          websiteRootFolderOnDisk: F:\Websites\EWS
+          appPoolIdentityForWebsite: ApplicationPoolIdentity
+          windowsAuthenticationForWebsite: true
+          variableGroups:
+            - EWS-CICD-DEV
