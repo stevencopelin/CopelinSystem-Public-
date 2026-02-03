@@ -610,5 +610,70 @@ namespace CopelinSystem.Services
             
             return result;
         }
+
+        public async Task<List<(string UserName, int ActiveCount, int CreatedCount)>> GetUserDetailedWorkload(int limit = 10, string? region = null)
+        {
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            // Active = 1, Created = 0
+            var query = context.ProjectLists
+                .Where(p => (p.ProjectStatus == 1 || p.ProjectStatus == 0) && !string.IsNullOrEmpty(p.ProjectUserIds));
+
+            if (!string.IsNullOrEmpty(region))
+            {
+                query = query.Where(p => p.ProjectRegion == region);
+            }
+
+            var projects = await query
+                .Select(p => new { p.ProjectStatus, p.ProjectUserIds })
+                .ToListAsync();
+
+            // user -> (active, created)
+            var userStats = new Dictionary<int, (int Active, int Created)>();
+
+            foreach (var p in projects)
+            {
+                if (string.IsNullOrEmpty(p.ProjectUserIds)) continue;
+
+                var splitIds = p.ProjectUserIds.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var idStr in splitIds)
+                {
+                    if (int.TryParse(idStr, out int userId))
+                    {
+                        if (!userStats.ContainsKey(userId))
+                            userStats[userId] = (0, 0);
+
+                        var current = userStats[userId];
+                        if (p.ProjectStatus == 1) // Active
+                            userStats[userId] = (current.Active + 1, current.Created);
+                        else if (p.ProjectStatus == 0) // Created
+                            userStats[userId] = (current.Active, current.Created + 1);
+                    }
+                }
+            }
+
+            // Order by Total Workload (Active + Created) or just Active? Let's do Total.
+            var topUserIds = userStats
+                .OrderByDescending(x => x.Value.Active + x.Value.Created)
+                .Take(limit)
+                .Select(x => x.Key)
+                .ToList();
+
+            var users = await context.Users
+                .Where(u => topUserIds.Contains(u.UserId))
+                .ToDictionaryAsync(u => u.UserId, u => u.DisplayName);
+
+            var result = new List<(string, int, int)>();
+            foreach (var userId in topUserIds)
+            {
+                if (users.ContainsKey(userId))
+                {
+                    var stats = userStats[userId];
+                    result.Add((users[userId], stats.Active, stats.Created));
+                }
+            }
+
+            return result;
+        }
     }
 }

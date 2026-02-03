@@ -10,6 +10,7 @@
 @inject IJSRuntime JSRuntime
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
+@inject AuthenticationService AuthService
 @layout ExternalLayout
 @rendermode InteractiveServer
 
@@ -60,7 +61,18 @@
                                         <h5><i class="icon fas fa-info"></i> Active Project</h5>
                                         <strong>@project.ProjectName</strong><br/>
                                         Location: @project.ProjectLocation<br/>
+                                        @if (!string.IsNullOrEmpty(estimatorName))
+                                        {
+                                            <span>Estimator: @estimatorName<br/></span>
+                                        }
                                         WR: @project.ProjectWr<br/>
+                                        @if (!string.IsNullOrEmpty(tokenEntity?.Notes))
+                                        {
+                                            <div class="mt-2 p-2 bg-white rounded text-dark">
+                                                <strong>Notes:</strong><br/>
+                                                <span style="white-space: pre-wrap;">@tokenEntity.Notes</span>
+                                            </div>
+                                        }
                                     </div>
 
                                     @if (internalDepartmentalFolderId.HasValue)
@@ -149,6 +161,7 @@ else
     private bool isValidToken = false;
     private bool isTokenChecked = false;
     private SubmissionToken? tokenEntity;
+    private string estimatorName = "";
 
     private int? internalDepartmentalFolderId;
     private int? currentFolderId;
@@ -169,9 +182,18 @@ else
             // 2. Load Project
             project = await ProjectService.GetProjectById(tokenEntity.ProjectId);
 
-             // 3. Load Internal Folder
-            if (project != null)
+             if (project != null)
             {
+                // Fetch Estimator Name
+                if (tokenEntity.CreatedByUserId.HasValue)
+                {
+                    var user = await AuthService.GetUserById(tokenEntity.CreatedByUserId.Value);
+                    if (user != null)
+                    {
+                        estimatorName = user.DisplayName ?? user.AdUsername ?? "Unknown";
+                    }
+                }
+
                var folder = await FileService.GetFolderByName(project.ProjectId, "Inter-Departmental Files");
                if (folder != null)
                {

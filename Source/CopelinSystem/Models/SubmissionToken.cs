@@ -24,5 +24,9 @@ namespace CopelinSystem.Models
         public DateTime? UsedAt { get; set; }
 
         public bool IsNotificationDismissed { get; set; } = false;
+
+        public string? Notes { get; set; }
+
+        public int? CreatedByUserId { get; set; }
     }
 }

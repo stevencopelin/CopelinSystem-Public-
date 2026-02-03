@@ -84,14 +84,14 @@
                     <!-- Advanced Filters (Collapsible) -->
                     @if (showAdvancedSearch)
                     {
-                        <div class="row mt-3 border-top pt-3">
+                        <div class="row mt-3 border-top pt-3 bg-light rounded mx-1">
                             @if (canViewEstimatorFilter)
                             {
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <div class="form-group">
-                                        <label>Filter by Estimator</label>
+                                        <label>Estimator</label>
                                         <select class="form-control" @bind="selectedEstimatorId" @bind:after="ApplyFilters">
-                                            <option value="0">-- All Estimators --</option>
+                                            <option value="0">-- All --</option>
                                             @foreach (var estimator in estimators)
                                             {
                                                 <option value="@estimator.UserId">@estimator.DisplayName</option>
@@ -101,14 +101,24 @@
                                 </div>
                             }
                             
-                            
-                            <!-- Additional Filters -->
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>Client</label>
+                                    <select class="form-control" @bind="selectedClient" @bind:after="ApplyFilters">
+                                        <option value="">-- All --</option>
+                                        @foreach (var client in availableClients)
+                                        {
+                                            <option value="@client">@client</option>
+                                        }
+                                    </select>
+                                </div>
+                            </div>
 
                             <div class="col-md-3">
                                 <div class="form-group">
                                     <label>Works Type</label>
                                     <select class="form-control" @bind="selectedWorksType" @bind:after="ApplyFilters">
-                                        <option value="">-- All Types --</option>
+                                        <option value="">-- All --</option>
                                         @foreach (var type in availableWorksTypes)
                                         {
                                             <option value="@type">@type</option>
@@ -116,16 +126,19 @@
                                     </select>
                                 </div>
                             </div>
+                             <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>Work Order (WO)</label>
+                                    <input type="text" class="form-control" @bind="searchWo" @bind:event="oninput" @bind:after="ApplyFilters" placeholder="WO Number..." />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row mx-1 pb-3 bg-light rounded-bottom">
                             <div class="col-md-3">
                                 <div class="form-group">
-                                    <label>Client</label>
-                                    <select class="form-control" @bind="selectedClient" @bind:after="ApplyFilters">
-                                        <option value="">-- All Clients --</option>
-                                        @foreach (var client in availableClients)
-                                        {
-                                            <option value="@client">@client</option>
-                                        }
-                                    </select>
+                                    <label>Purchase Order (PO)</label>
+                                    <input type="text" class="form-control" @bind="searchPo" @bind:event="oninput" @bind:after="ApplyFilters" placeholder="PO Number..." />
                                 </div>
                             </div>
                             <div class="col-md-3">
@@ -134,11 +147,16 @@
                                     <input type="date" class="form-control" @bind="dateFrom" @bind:after="ApplyFilters" />
                                 </div>
                             </div>
-                            <div class="col-md-3">
+                             <div class="col-md-3">
                                 <div class="form-group">
                                     <label>Created Before</label>
                                     <input type="date" class="form-control" @bind="dateTo" @bind:after="ApplyFilters" />
                                 </div>
+                            </div>
+                             <div class="col-md-3 d-flex align-items-end mb-3">
+                                <small class="text-muted w-100 text-right">
+                                    <span class="d-block" style="line-height: 1.2;">Use filters to narrow down results.</span>
+                                </small>
                             </div>
                         </div>
                     }
@@ -338,6 +356,8 @@
     // Additional Filters
     private string selectedClient = "";
     private string selectedWorksType = "";
+    private string searchWo = "";
+    private string searchPo = "";
     private DateTime? dateFrom;
     private DateTime? dateTo;
     
@@ -482,7 +502,9 @@
                 (p.ProjectName?.ToLower().Contains(term) ?? false) ||
                 (p.ProjectWr?.ToLower().Contains(term) ?? false) ||
                 (p.ProjectLocation?.ToLower().Contains(term) ?? false) ||
-                (p.ProjectDescription?.ToLower().Contains(term) ?? false)
+                (p.ProjectDescription?.ToLower().Contains(term) ?? false) ||
+                (p.ProjectWo?.ToLower().Contains(term) ?? false) ||
+                (p.ProjectPurchaseOrder?.ToLower().Contains(term) ?? false)
             );
         }
 
@@ -499,6 +521,8 @@
         // Additional Filters
         if (!string.IsNullOrEmpty(selectedClient)) query = query.Where(p => p.ProjectClient == selectedClient);
         if (!string.IsNullOrEmpty(selectedWorksType)) query = query.Where(p => p.ProjectWorkstype == selectedWorksType);
+        if (!string.IsNullOrEmpty(searchWo)) query = query.Where(p => p.ProjectWo?.ToLower().Contains(searchWo.ToLower()) ?? false);
+        if (!string.IsNullOrEmpty(searchPo)) query = query.Where(p => p.ProjectPurchaseOrder?.ToLower().Contains(searchPo.ToLower()) ?? false);
         if (dateFrom.HasValue) query = query.Where(p => p.ProjectDateCreated >= dateFrom.Value);
         if (dateTo.HasValue) query = query.Where(p => p.ProjectDateCreated <= dateTo.Value.AddDays(1)); // Inclusive
 

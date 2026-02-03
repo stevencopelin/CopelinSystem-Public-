@@ -14,7 +14,7 @@ namespace CopelinSystem.Services
             _contextFactory = contextFactory;
         }
 
-        public async Task<Guid> GenerateToken(int projectId, string dept)
+        public async Task<Guid> GenerateToken(int projectId, string dept, int? userId = null, string? notes = null)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
             
@@ -25,7 +25,9 @@ namespace CopelinSystem.Services
                 Department = dept,
                 DateCreated = DateTime.Now,
                 ExpiresAt = DateTime.Now.AddDays(7), // Token valid for 7 days
-                IsUsed = false
+                IsUsed = false,
+                CreatedByUserId = userId,
+                Notes = notes
             };
 
             context.SubmissionTokens.Add(token);
