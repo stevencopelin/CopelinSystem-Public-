@@ -1,0 +1,293 @@
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject FileSystemService FileService
+@inject IJSRuntime JSRuntime
+
+<div class="file-list-container">
+    <div class="file-list-toolbar mb-2">
+        <div class="breadcrumb-bar p-2 bg-light rounded text-muted">
+            <i class="fas fa-folder-open mr-2"></i> @Breadcrumb
+        </div>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="text-center mt-5"><i class="fas fa-spinner fa-spin fa-2x"></i></div>
+    }
+    else if (!CurrentContext)
+    {
+        <div class="text-center mt-5 text-muted">
+            <i class="fas fa-arrow-left fa-3x mb-3"></i>
+            <h4>Select a project or folder to view files</h4>
+        </div>
+    }
+    else
+    {
+        <table class="table table-hover table-sm file-grid">
+            <thead>
+                <tr>
+                    <th style="width: 20px;"></th>
+                    <th>Name</th>
+                    @if (IsSearch)
+                    {
+                        <th>Project</th>
+                        <th>Location</th>
+                    }
+                    <th style="width: 150px;">Date Modified</th>
+                    <th style="width: 100px;">Type</th>
+                    <th style="width: 100px;">Size</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (ParentId != null && !IsSearch)
+                {
+                    <tr class="up-level" @onclick="GoUp" title="Go Up" style="cursor: pointer;">
+                        <td><i class="fas fa-level-up-alt"></i></td>
+                        <td>..</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                }
+                
+                @if (!EffectiveItems.Any())
+                {
+                    <tr>
+                        <td colspan="@(IsSearch ? 7 : 5)" class="text-center text-muted p-4">
+                            @(IsSearch ? "No results found" : "This folder is empty")
+                        </td>
+                    </tr>
+                }
+
+                @foreach (var itemWrapper in DisplayItems)
+                {
+                    var item = itemWrapper.Item!;
+                    <tr class="@(SelectedItem == item ? "table-active" : "")" 
+                        @onclick="() => SelectItem(item, itemWrapper.ProjectName)"
+                        @ondblclick="() => OpenItem(item)"
+                        @oncontextmenu="e => OnContext(e, item)" @oncontextmenu:preventDefault="true">
+                        <td>
+                            <i class="fas @(GetIcon(item)) @(item.IsFolder ? "text-warning" : "text-secondary")"></i>
+                        </td>
+                        <td>
+                            @if (EditingItemId == item.Id)
+                            {
+                                <input type="text" class="form-control form-control-sm" 
+                                       @bind="EditingName" 
+                                       @onblur="() => FinishRename(item)"
+                                       @onkeydown="e => HandleRenameKey(e, item)"
+                                       autofocus />
+                            }
+                            else
+                            {
+                                @item.Name
+                            }
+                        </td>
+                        @if (IsSearch)
+                        {
+                            <td><small>@itemWrapper.ProjectName</small></td>
+                            <td><small>@itemWrapper.Region / @itemWrapper.Location</small></td>
+                        }
+                        <td>@item.ModifiedDate.ToString("g")</td>
+                        <td>@(item.IsFolder ? "File folder" : Path.GetExtension(item.Name))</td>
+                        <td>@(item.IsFolder ? "" : FormatSize(item.Size))</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    [Parameter] public int? ProjectId { get; set; }
+    [Parameter] public int? ParentId { get; set; }
+    [Parameter] public string Breadcrumb { get; set; } = string.Empty;
+    [Parameter] public List<FileSystemSearchItem>? SearchResults { get; set; } // new
+    [Parameter] public EventCallback<SelectionEventArgs> OnNavigate { get; set; }
+    [Parameter] public EventCallback<ContextMenuEventArgs> OnContextMenu { get; set; }
+    [Parameter] public EventCallback<FileSystemItem> OnFileOpen { get; set; }
+    
+    private List<FileSystemItem> Items = new();
+    private FileSystemItem? SelectedItem;
+    private bool IsLoading = false;
+    private bool CurrentContext => ProjectId.HasValue || (SearchResults != null);
+
+    private bool IsSearch => SearchResults != null;
+
+    // Helper to unify display
+    private IEnumerable<FileSystemItem> EffectiveItems => IsSearch ? SearchResults!.Select(r => r.Item!).ToList() : Items;
+
+    private IEnumerable<FileSystemSearchItem> DisplayItems 
+    {
+        get 
+        {
+            if (IsSearch) return SearchResults!;
+            // Wrap regular items
+            return Items.Select(i => new FileSystemSearchItem { Item = i }); 
+        }
+    }
+
+    // Renaming state
+    private int? EditingItemId;
+    private string EditingName = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsSearch)
+        {
+            // Already loaded by parent
+            Items.Clear();
+        }
+        else if (ProjectId.HasValue)
+        {
+            await LoadItems();
+        }
+        else 
+        {
+            Items.Clear();
+        }
+    }
+
+    public async Task LoadItems()
+    {
+        if (!ProjectId.HasValue) return;
+        IsLoading = true;
+        Items = await FileService.GetItems(ProjectId.Value, ParentId);
+        IsLoading = false;
+        SelectedItem = null;
+        StateHasChanged();
+    }
+
+    private void SelectItem(FileSystemItem item, string? projectName = null)
+    {
+        SelectedItem = item;
+    }
+
+    private async Task OpenItem(FileSystemItem item)
+    {
+        if (item.IsFolder)
+        {
+             await OnNavigate.InvokeAsync(new SelectionEventArgs { Type = SelectionType.Folder, Folder = item });
+        }
+        else
+        {
+            // Allow parent to handle file opening (e.g. for preview)
+            if (OnFileOpen.HasDelegate)
+            {
+                await OnFileOpen.InvokeAsync(item);
+            }
+            else if (!string.IsNullOrEmpty(item.PhysicalPath))
+            {
+                 // Default behavior: Open in new tab
+                 // Replace backslashes for URL
+                 var url = "/" + item.PhysicalPath.Replace("\\", "/");
+                 await JSRuntime.InvokeVoidAsync("open", url, "_blank");
+            }
+        }
+    }
+
+    private async Task GoUp()
+    {
+        // Handled by parent logic, we need to know the parent's parent.
+        // It's easier if the parent handles this logic based on Breadcrumb or state.
+        // Let's pass a signal.
+        // Or fetch current folder's parent ID from service/entity?
+        if (ParentId.HasValue)
+        {
+             // We need to fetch the current folder item to know its parent.
+             // This component only knows ParentId, effectively "Current Folder Id".
+             // Optimized: Parent should handle "navigate up".
+             // We will emit a special event or handle it here?
+             // Emitting "Up" is ambiguous in current EventCallback structure.
+             // Let's create a Helper GetParent(id) in Service or just ask parent to handle navigation history.
+             // Current simplified approach: Assume TreeView handles navigation, this handles display.
+             // But valid file explorer needs up button.
+             // Implementing crude "Up" via callback with nulls?
+        }
+    }
+
+    private async Task OnContext(MouseEventArgs e, FileSystemItem item)
+    {
+        SelectItem(item);
+        await OnContextMenu.InvokeAsync(new ContextMenuEventArgs 
+        { 
+            Type = item.IsFolder ? SelectionType.Folder : SelectionType.File, 
+            Folder = item, // Reuse Folder prop for Item
+            X = e.ClientX, 
+            Y = e.ClientY 
+        });
+    }
+
+    private string GetIcon(FileSystemItem item)
+    {
+        if (item.IsFolder) return "fa-folder";
+        var ext = Path.GetExtension(item.Name).ToLower();
+        return ext switch
+        {
+            ".pdf" => "fa-file-pdf text-danger",
+            ".doc" or ".docx" => "fa-file-word text-primary",
+            ".xls" or ".xlsx" => "fa-file-excel text-success",
+            ".jpg" or ".png" or ".jpeg" => "fa-file-image text-info",
+            ".zip" or ".rar" => "fa-file-archive text-secondary",
+            ".txt" => "fa-file-alt text-dark",
+            ".html" or ".htm" => "fa-file-code text-danger",
+            _ => "fa-file text-secondary"
+        };
+    }
+
+    private string FormatSize(long bytes)
+    {
+        string[] suffixes = { "B", "KB", "MB", "GB", "TB" };
+        int counter = 0;
+        decimal number = (decimal)bytes;
+        while (Math.Round(number / 1024) >= 1)
+        {
+            number = number / 1024;
+            counter++;
+        }
+        return string.Format("{0:n1}{1}", number, suffixes[counter]);
+    }
+
+    // Rename Logic
+    public void StartRename(FileSystemItem item)
+    {
+        EditingItemId = item.Id;
+        EditingName = item.Name;
+        StateHasChanged();
+    }
+
+    private async Task FinishRename(FileSystemItem item)
+    {
+        if (EditingItemId == null) return;
+        
+        if (!string.IsNullOrWhiteSpace(EditingName) && EditingName != item.Name)
+        {
+            try 
+            {
+               await FileService.RenameItem(item.Id, EditingName);
+               item.Name = EditingName; // Optimistic update
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("Notifications.showError", "Rename failed: " + ex.Message);
+            }
+        }
+        
+        EditingItemId = null;
+        EditingName = "";
+        StateHasChanged();
+    }
+
+    private async Task HandleRenameKey(KeyboardEventArgs e, FileSystemItem item)
+    {
+        if (e.Key == "Enter")
+        {
+            await FinishRename(item);
+        }
+        else if (e.Key == "Escape")
+        {
+            EditingItemId = null;
+            StateHasChanged();
+        }
+    }
+}

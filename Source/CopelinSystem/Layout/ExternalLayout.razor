@@ -1,0 +1,26 @@
+@inherits LayoutComponentBase
+
+<div class="external-layout">
+    <main class="content-wrapper" style="margin-left: 0 !important; background: #f4f6f9; min-height: 100vh;">
+        <div class="content pt-4">
+            <div class="container">
+                @Body
+            </div>
+        </div>
+    </main>
+</div>
+
+<style>
+    /* Override AdminLTE/Bootstrap defaults that might depend on sidebar */
+    body {
+        background-color: #f4f6f9;
+        height: auto;
+    }
+    .content-wrapper {
+        margin-left: 0 !important;
+    }
+    .main-footer {
+        margin-left: 0 !important;
+        text-align: center;
+    }
+</style>

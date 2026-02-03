@@ -1,0 +1,778 @@
+@page "/projects/edit/{ProjectId:int}"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject ProjectService ProjectService
+@inject ClientService ClientService
+@inject ConsultantService ConsultantService
+@inject ContractorService ContractorService
+@inject EmployeeService EmployeeService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject AuthenticationService AuthService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Edit Project - Copelin Work Flow Management</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="container-fluid mt-3">
+            @if (project == null)
+            {
+                <div class="text-center">
+                    <p>Loading project...</p>
+                </div>
+            }
+            else
+            {
+                <!-- Header Section -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h3><i class="nav-icon fas fa-edit"></i> Edit Project</h3>
+                    </div>
+                    <div class="col-md-6 text-right">
+                        <button class="btn btn-success" @onclick="SaveProject"><i class="fas fa-save"></i> Save Changes</button>
+                        <button class="btn btn-secondary" @onclick="Cancel"><i class="fas fa-times"></i> Cancel</button>
+                    </div>
+                </div>
+
+                <!-- Edit Form -->
+                <div class="card card-outline card-primary">
+                    <div class="card-header">
+                        <h3 class="card-title">Project Information</h3>
+                    </div>
+                    <div class="card-body">
+                        <ul class="nav nav-tabs mb-3">
+                            <li class="nav-item">
+                                <a class="nav-link @(activeTab == "general" ? "active" : "")" @onclick='() => activeTab = "general"' href="javascript:void(0)">General Info</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link @(activeTab == "financials" ? "active" : "")" @onclick='() => activeTab = "financials"' href="javascript:void(0)">Financials & Dates</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link @(activeTab == "stakeholders" ? "active" : "")" @onclick='() => activeTab = "stakeholders"' href="javascript:void(0)">Stakeholders</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link @(activeTab == "system" ? "active" : "")" @onclick='() => activeTab = "system"' href="javascript:void(0)">System Info</a>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content">
+                            <!-- Tab 1: General Info -->
+                            @if (activeTab == "general")
+                            {
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <!-- Project Details Shadow Box -->
+                                        <div class="card bg-light p-3 mb-3">
+                                            <h5 class="mb-3">Project Details</h5>
+        
+                                            <div class="form-group">
+                                                <label><strong>Date Created</strong></label>
+                                                <input type="text" class="form-control" value="@project.ProjectDateCreated.ToString("dd/MM/yyyy")" disabled />
+                                                <small class="text-muted">This field cannot be modified</small>
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Work Request (WR) Number</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectWr" disabled="@(!canEditWr)" />
+                                                @if (!canEditWr)
+                                                {
+                                                    <small class="text-muted">Only Admin and Principal Estimator can edit this field</small>
+                                                }
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Project Name *</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectName" required />
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Location</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectLocation" />
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>WIC Number (Identifiying Number)</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectWicNo" />
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Description</strong></label>
+                                                <textarea class="form-control" rows="3" @bind="project.ProjectDescription"></textarea>
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Works Type</strong></label>
+                                                <InputSelect @bind-Value="project.ProjectWorkstype" class="form-control">
+                                                    <option value="">-- Select Works Type --</option>
+                                                    <option value="Fee Proposal">Fee Proposal</option>
+                                                    <option value="Delivery">Delivery</option>
+                                                    <option value="Indicative">Indicative</option>
+                                                    <option value="Quantity Survey">Quantity Survey</option>
+                                                    <option value="Other Works">Other Works</option>
+                                                </InputSelect>
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Componentisation</strong></label>
+                                                <select class="form-control" @bind="project.ProjectComponentisation">
+                                                    <option value="">-- Select --</option>
+                                                    <option value="Yes">Yes</option>
+                                                    <option value="No">No</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <!-- Client Information Section (Grouped) -->
+                                        <div class="card bg-light p-3 mb-3">
+                                            <h5 class="mb-3">Client Information</h5>
+        
+                                            <div class="form-group">
+                                                <label><strong>Client Required Date</strong></label>
+                                                <input type="date" class="form-control" @bind="project.ProjectClientRequired" />
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Client Completion Date</strong></label>
+                                                <input type="date" class="form-control" @bind="project.ProjectClientCompletion" />
+                                            </div>
+        
+                                            @if (currentUser != null && AuthService.IsManagerOrHigher(currentUser))
+                                            {
+                                            <div class="form-group">
+                                                <label><strong>Region</strong></label>
+                                                <select class="form-control" @bind="selectedRegionId" @bind:after="OnRegionChanged">
+                                                    <option value="0">-- Select Region --</option>
+                                                    @if (regions != null)
+                                                    {
+                                                        foreach (var region in regions)
+                                                        {
+                                                            <option value="@region.RegionId">@region.RegionName</option>
+                                                        }
+                                                    }
+                                                </select>                        
+                                            </div>
+                                            }
+        
+                                            <div class="form-group">
+                                                <label><strong>Project Region</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectRegion" readonly />
+                                                <small class="text-muted">This field is automatically updated based on the selected Region.</small>
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Client</strong></label>
+                                                <select class="form-control" @bind="selectedClientId" @bind:after="OnClientChanged" disabled="@(selectedRegionId == 0)">
+                                                    <option value="0">-- Select Client --</option>
+                                                    @if (filteredClients != null)
+                                                    {
+                                                        foreach (var client in filteredClients)
+                                                        {
+                                                            <option value="@client.ClientId">@client.ClientCode - @client.ClientName</option>
+                                                        }
+                                                    }
+                                                </select>
+                                                @if (selectedRegionId == 0)
+                                                {
+                                                    <small class="text-muted">Please select a region first</small>
+                                                }
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Client Contact</strong></label>
+                                                <select class="form-control" @bind="selectedContactId" @bind:after="OnContactChanged" disabled="@(selectedClientId == 0)">
+                                                    <option value="0">-- Select Contact --</option>
+                                                    @if (clientContacts != null)
+                                                    {
+                                                        foreach (var contact in clientContacts)
+                                                        {
+                                                            <option value="@contact.ClientContactId">@contact.ContactName @(contact.IsPrimary ? "(Primary)" : "")</option>
+                                                        }
+                                                    }
+                                                </select>
+                                                @if (selectedClientId == 0)
+                                                {
+                                                    <small class="text-muted">Please select a client first</small>
+                                                }
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Contact Email</strong></label>
+                                                <input type="email" class="form-control" @bind="project.ProjectContactEmail" readonly="@(selectedContactId == 0)" />
+                                                @if (selectedContactId == 0)
+                                                {
+                                                    <small class="text-muted">Select a contact to auto-fill email</small>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+
+                            <!-- Tab 2: Financials & Dates -->
+                            @if (activeTab == "financials")
+                            {
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <!-- Financial Information Shadow Box -->
+                                        <div class="card bg-light p-3 mb-3">
+                                            <h5 class="mb-3">Financial Information</h5>
+                                            
+                                            <div class="form-group">
+                                                <label><strong>Indicative Price</strong></label>
+                                                <div class="input-group">
+                                                    <div class="input-group-prepend">
+                                                        <span class="input-group-text">$</span>
+                                                    </div>
+                                                    <input type="text" class="form-control" @bind="project.ProjectIndicative" />
+                                                </div>
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Actual Price</strong></label>
+                                                <div class="input-group">
+                                                    <div class="input-group-prepend">
+                                                        <span class="input-group-text">$</span>
+                                                    </div>
+                                                    <input type="text" class="form-control" @bind="project.ProjectActualPrice" />
+                                                </div>
+                                            </div>
+                                        </div>
+        
+                                        <!-- Associated Fee Proposal Shadow Box -->
+                                        <div class="card bg-light p-3 mb-3">
+                                            <h5 class="mb-3">Associated Fee Proposal</h5>
+        
+                                            <div class="form-group">
+                                                <label><strong>Fee Proposal</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectFeeprop" placeholder="Enter Fee Proposal WR Number"/>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <!-- Estimators Date Information Shadow Box -->
+                                        <div class="card bg-light p-3 mb-3">
+                                            <h5 class="mb-3">Estimators Date Information</h5>
+        
+                                            <div class="form-group">
+                                                <label><strong>Estimators Start Date <small>(Date of first task)</small></strong></label>
+                                                <input type="date" class="form-control" @bind="project.ProjectStartDate" />
+                                            </div>
+
+                                            <div class="form-group">
+                                                <label><strong>Tender Close Date</strong></label>
+                                                <input type="date" class="form-control" @bind="project.ProjectTendered" />
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Estimated Completion <small>(Projected timeline value)</small></strong></label>
+                                                <input type="date" class="form-control" @bind="project.ProjectEndDate" readonly/>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+
+                            <!-- Tab 3: Stakeholders -->
+                            @if (activeTab == "stakeholders")
+                            {
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <!-- Project Stake Holders Shadow Box -->
+                                        <div class="card bg-light p-3 mb-3">
+                                            <h5 class="mb-3">Project Stake Holders</h5>
+        
+                                            <div class="form-group">
+                                                <label><strong>Supervisor</strong></label>
+                                                <select class="form-control" @bind="project.ProjectSupervisor">
+                                                    <option value="">-- Select Supervisor --</option>
+                                                    @if (supervisors != null)
+                                                    {
+                                                        foreach (var supervisor in supervisors)
+                                                        {
+                                                            <option value="@supervisor.FullName">@supervisor.FullName @(supervisor.Region != null ? $"({supervisor.Region.RegionName})" : "")</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Principal Estimator</strong></label>
+                                                <select class="form-control" @bind="project.ProjectSeniorEstimator">
+                                                    <option value="">-- Select Senior Estimator --</option>
+                                                    @if (seniorEstimators != null)
+                                                    {
+                                                        foreach (var estimator in seniorEstimators)
+                                                        {
+                                                            <option value="@estimator.FullName">@estimator.FullName @(estimator.Region != null ? $"({estimator.Region.RegionName})" : "")</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </div>
+        
+                                            @if (currentUser != null && AuthService.IsManagerOrHigher(currentUser))
+                                            {
+                                                <div class="form-group">
+                                                    <label><strong>Project Team</strong> (Hold Ctrl/Cmd to select multiple)</label>
+                                                    <select multiple class="form-control" @bind="SelectedUserIds" style="height: 150px;" disabled="@(selectedRegionId == 0)">
+                                                        @if (filteredUsers != null && filteredUsers.Any())
+                                                        {
+                                                            foreach (var user in filteredUsers)
+                                                            {
+                                                                <option value="@user.UserId">@user.Firstname @user.Lastname</option>
+                                                            }
+                                                        }
+                                                    </select>
+                                                    @if (selectedRegionId == 0)
+                                                    {
+                                                        <small class="form-text text-muted">Please select a region first to see available team members.</small>
+                                                    }
+                                                    <small class="form-text text-muted">Assign users to this project. Selected users will see this project on their dashboard.</small>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <!-- Project Consultant/Contractor Shadow Box -->
+                                        <div class="card bg-light p-3 mb-3">
+                                            <h5 class="mb-3">Project Consultant/Contractor</h5>
+        
+                                            <div class="form-group">
+                                                <label><strong>Consultant</strong></label>
+                                                <select class="form-control" @bind="project.ProjectConsultant">
+                                                    <option value="">-- Select Consultant --</option>
+                                                    @if (consultants != null)
+                                                    {
+                                                        foreach (var consultant in consultants)
+                                                        {
+                                                            <option value="@consultant.BusinessName">@consultant.BusinessName</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Contractor</strong></label>
+                                                <select class="form-control" @bind="project.ProjectContractor">
+                                                    <option value="">-- Select Contractor --</option>
+                                                    @if (contractors != null)
+                                                    {
+                                                        foreach (var contractor in contractors)
+                                                        {
+                                                            <option value="@contractor.BusinessName">@contractor.BusinessName</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+
+                            <!-- Tab 4: System Info -->
+                            @if (activeTab == "system")
+                            {
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <!-- Sub-System Details Shadow Box -->
+                                        <div class="card bg-light p-3 mb-3">
+                                            <h5 class="mb-3">Sub-System Details</h5>
+        
+                                            <div class="form-group">
+                                                <label><strong>IRIS Contract Number</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectIrisNo" placeholder="Example: MI-123456" />
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>eTender Contract Number</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectEtenderNo" placeholder="Example: DD123456BLD1" />
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Program Code</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectProgramCode" placeholder="Example: LO1234" />
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>One School Number</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectOneSchool" placeholder="Example: P-N1234" />
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Work Order Number</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectWo" placeholder="Example: 123456" />
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>REQ Order Number</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectReqOrder" placeholder="Example: 123456" />
+                                            </div>
+        
+                                            <div class="form-group">
+                                                <label><strong>Purchase Order Number</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectPurchaseOrder" placeholder="Example: B1234" />
+                                            </div>
+
+                                            <div class="form-group">
+                                                <label><strong>Quote Tracker Number</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectQuoteTracker" placeholder="Example: SWQ-12345" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+
+        
+                                        <!-- Ellipse Management Shadow Box -->
+                                        <div class="card bg-light p-3 mb-3">
+                                            <h5 class="mb-3">Ellipse Management</h5>
+                                            <div class="form-group">
+                                                <label><strong>Ellipse Status</strong></label>
+                                                <input type="text" class="form-control" @bind="project.ProjectEllipesStatus" readonly/>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="text-center mt-5">
+            <h3>Please log in to edit projects.</h3>
+            <a href="/login" class="btn btn-primary">Go to Login</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Parameter]
+    public int ProjectId { get; set; }
+
+    private ProjectList? project;
+    private User? currentUser;
+    private bool canEditWr = false;
+    private List<Client>? clients;
+    private List<Client>? filteredClients;
+    private List<ClientContact>? clientContacts;
+    private List<Region>? regions;
+    private List<Consultant>? consultants;
+    private List<Contractor>? contractors;
+    private List<Employee>? supervisors;
+    private List<Employee>? seniorEstimators;
+    private List<User>? allUsers;
+    private List<User> filteredUsers = new();
+    
+    private string[] SelectedUserIds
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(project?.ProjectUserIds))
+                return Array.Empty<string>();
+            return project.ProjectUserIds.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        }
+        set
+        {
+            if (project != null)
+            {
+                project.ProjectUserIds = string.Join(",", value);
+            }
+        }
+    }
+    
+    // Cascading lookup state
+    private int selectedRegionId = 0;
+    private int selectedClientId = 0;
+    private int selectedContactId = 0;
+    
+    // UI State
+    private string activeTab = "general";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId");
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                currentUser = await AuthService.GetUserById(userId);
+                
+                // Check if user can edit WR field (Admin or Principal Estimator)
+                if (currentUser != null)
+                {
+                    canEditWr = currentUser.Role == UserRole.Admin || currentUser.Role == UserRole.PrincipalEstimator;
+                }
+            }
+        }
+
+        // Load project
+        project = await ProjectService.GetProjectById(ProjectId);
+        
+        // Load regions for cascading dropdown
+        regions = await EmployeeService.GetAllRegions();
+        
+        // Load all clients
+        clients = await ClientService.GetAllClients();
+        
+        // Load consultants for dropdown
+        consultants = await ConsultantService.GetAllConsultants();
+        
+        // Load contractors for dropdown
+        contractors = await ContractorService.GetAllContractors();
+        
+        // Load supervisors for dropdown
+        supervisors = await EmployeeService.GetSupervisors();
+        
+        // Load senior estimators for dropdown
+        seniorEstimators = await EmployeeService.GetSeniorEstimators();
+
+        // Load all users for Project Team assignment (only needed for Managers+)
+        if (currentUser != null && AuthService.IsManagerOrHigher(currentUser))
+        {
+            allUsers = await AuthService.GetAllUsers();
+        }
+        
+        // Initialize cascading lookups based on existing project data (must be after loading all data including users)
+        await InitializeCascadingLookups();
+    }
+
+    private async Task InitializeCascadingLookups()
+    {
+        if (project == null || clients == null || regions == null) return;
+
+        // 1. First try to set Region from the saved ProjectRegion
+        if (!string.IsNullOrEmpty(project.ProjectRegion))
+        {
+            var existingRegion = regions.FirstOrDefault(r => r.RegionName == project.ProjectRegion);
+            if (existingRegion != null)
+            {
+                selectedRegionId = existingRegion.RegionId;
+            }
+        }
+
+        // 2. Try to find the client
+        // FIX: Prioritize finding the client in the selected region if possible, as names might be duplicated across regions
+        Client? existingClient = null;
+        if (!string.IsNullOrEmpty(project.ProjectClient))
+        {
+            if (selectedRegionId > 0)
+            {
+                // Try finding matching name in the specific region
+                existingClient = clients.FirstOrDefault(c => c.ClientName == project.ProjectClient && c.RegionId == selectedRegionId);
+            }
+            
+            // Fallback: If not found in region (or region not set), just find by name
+            if (existingClient == null)
+            {
+                existingClient = clients.FirstOrDefault(c => c.ClientName == project.ProjectClient);
+            }
+        }
+        
+        if (existingClient != null)
+        {
+            selectedClientId = existingClient.ClientId;
+            
+            // Only fall back to Client's region if no region was selected from ProjectRegion
+            if (selectedRegionId == 0 && existingClient.RegionId.HasValue)
+            {
+                selectedRegionId = existingClient.RegionId.Value;
+            }
+        }
+
+        // 3. Set up filtering based on the resolved Region
+        if (selectedRegionId > 0)
+        {
+            // Filter clients by the selected region - Use DB query for accuracy
+            filteredClients = await ClientService.GetClientsByRegion(selectedRegionId);
+
+            // Special handling: If the selected client is NOT in the filtered list (e.g. slight mismatch or cross-region),
+            // add it to the list so it displays correctly.
+            if (selectedClientId > 0 && filteredClients != null)
+            {
+                // Check if already in list
+                if (!filteredClients.Any(c => c.ClientId == selectedClientId))
+                {
+                    // Retrieve the full client object if we found it earlier
+                     if (existingClient != null)
+                    {
+                        filteredClients.Add(existingClient);
+                    }
+                    else
+                    {
+                        var clientToAdd = clients.FirstOrDefault(c => c.ClientId == selectedClientId);
+                        if (clientToAdd != null)
+                        {
+                            filteredClients.Add(clientToAdd);
+                        }
+                    }
+                    
+                    // Re-sort to ensure added client is in order by name
+                    filteredClients = filteredClients.OrderBy(c => c.ClientName).ToList();
+                }
+            }
+            
+            // Filter users by this region
+            if (allUsers != null)
+            {
+                var selectedRegion = regions.FirstOrDefault(r => r.RegionId == selectedRegionId);
+                if (selectedRegion != null)
+                {
+                    filteredUsers = allUsers.Where(u => u.Region == selectedRegion.RegionName).ToList();
+                }
+            }
+        }
+        else if (allUsers != null)
+        {
+            filteredUsers = new List<User>();
+        }
+
+        // 4. Load contacts
+        if (selectedClientId > 0)
+        {
+             clientContacts = await ClientService.GetClientContactsByClient(selectedClientId);
+             
+             if (!string.IsNullOrEmpty(project.ProjectContact))
+             {
+                 var existingContact = clientContacts.FirstOrDefault(c => c.ContactName == project.ProjectContact);
+                 if (existingContact != null)
+                 {
+                     selectedContactId = existingContact.ClientContactId;
+                 }
+             }
+        }
+    }
+
+    private async Task OnRegionChanged()
+    {
+        // Filter clients by selected region
+        if (selectedRegionId > 0)
+        {
+            filteredClients = await ClientService.GetClientsByRegion(selectedRegionId);
+            
+            // Update project region name
+            if (project != null && regions != null)
+            {
+                var selectedRegion = regions.FirstOrDefault(r => r.RegionId == selectedRegionId);
+                if (selectedRegion != null)
+                {
+                    project.ProjectRegion = selectedRegion.RegionName;
+                }
+            }
+        }
+        else
+        {
+            filteredClients = new List<Client>();
+            filteredUsers = new List<User>();
+            
+            // Clear project region
+            if (project != null)
+            {
+                project.ProjectRegion = "";
+            }
+        }
+        
+        // Filter users by region
+        if (selectedRegionId > 0 && allUsers != null && regions != null)
+        {
+            var selectedRegion = regions.FirstOrDefault(r => r.RegionId == selectedRegionId);
+            if (selectedRegion != null)
+            {
+                filteredUsers = allUsers.Where(u => u.Region == selectedRegion.RegionName).ToList();
+            }
+        }
+        
+        // Reset client and contact selections
+        selectedClientId = 0;
+        selectedContactId = 0;
+        clientContacts = new List<ClientContact>();
+        
+        // Clear client and contact fields
+        if (project != null)
+        {
+            project.ProjectClient = "";
+            project.ProjectContact = "";
+            project.ProjectContactEmail = "";
+        }
+        
+        await Task.CompletedTask;
+    }
+
+    private async Task OnClientChanged()
+    {
+        // Load contacts for selected client
+        if (selectedClientId > 0)
+        {
+            clientContacts = await ClientService.GetClientContactsByClient(selectedClientId);
+            
+            // Update project client name (not code)
+            if (project != null && filteredClients != null)
+            {
+                var selectedClient = filteredClients.FirstOrDefault(c => c.ClientId == selectedClientId);
+                if (selectedClient != null)
+                {
+                    project.ProjectClient = selectedClient.ClientName; // Changed from ClientCode to ClientName
+                }
+            }
+        }
+        else
+        {
+            clientContacts = new List<ClientContact>();
+        }
+        
+        // Reset contact selection
+        selectedContactId = 0;
+        
+        // Clear contact fields
+        if (project != null)
+        {
+            project.ProjectContact = "";
+            project.ProjectContactEmail = "";
+        }
+    }
+
+    private async Task OnContactChanged()
+    {
+        // Update project contact fields
+        if (selectedContactId > 0 && clientContacts != null && project != null)
+        {
+            var selectedContact = clientContacts.FirstOrDefault(cc => cc.ClientContactId == selectedContactId);
+            if (selectedContact != null)
+            {
+                project.ProjectContact = selectedContact.ContactName;
+                project.ProjectContactEmail = selectedContact.ContactEmail ?? "";
+            }
+        }
+        else if (project != null)
+        {
+            project.ProjectContact = "";
+            project.ProjectContactEmail = "";
+        }
+        
+        await Task.CompletedTask;
+    }
+
+    private async Task SaveProject()
+    {
+        if (project == null) return;
+
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("Notifications.showConfirm", "Are you sure you want to save these changes?");
+        if (confirmed)
+        {
+            await ProjectService.UpdateProject(project);
+            await JSRuntime.InvokeVoidAsync("Notifications.showSuccess", "Project updated successfully!");
+            Navigation.NavigateTo($"/projects/view/{ProjectId}");
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo($"/projects/view/{ProjectId}");
+    }
+}

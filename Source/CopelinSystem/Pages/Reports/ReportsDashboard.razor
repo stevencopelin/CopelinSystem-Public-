@@ -1,0 +1,225 @@
+@page "/reports"
+@using CopelinSystem.Services
+@using CopelinSystem.Models
+@inject ReportingService ReportingService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject AuthenticationService AuthService
+@inject PermissionService PermissionService
+
+<AuthorizeView>
+    <Authorized>
+        <div class="content-header">
+            <div class="container-fluid">
+                <div class="row mb-2">
+                    <div class="col-sm-6">
+                        <h1 class="m-0"><i class="nav-icon fas fa-chart-pie"></i> Reporting Dashboard</h1>
+                    </div>
+                    <div class="col-sm-6">
+                        <ol class="breadcrumb float-sm-right">
+                            <li class="breadcrumb-item"><a href="/">Home</a></li>
+                            <li class="breadcrumb-item active">Reports</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <section class="content">
+            <div class="container-fluid">
+                @if (isLoading)
+                {
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="sr-only">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else if (!isAuthorized)
+                {
+                     <div class="text-center mt-5">
+                        <h3>Access Denied</h3>
+                        <p>You do not have the required permissions ('View Reports') to view this dashboard.</p>
+                    </div>
+                }
+                else
+                {
+                    <!-- Summary Cards Row -->
+                    <div class="row">
+                        <div class="col-lg-3 col-6">
+                            <div class="small-box bg-info">
+                                <div class="inner">
+                                    <h3>@activeProjectsCount</h3>
+                                    <p>Active Projects</p>
+                                </div>
+                                <div class="icon">
+                                    <i class="fas fa-project-diagram"></i>
+                                </div>
+                                <a href="/reports/projects" class="small-box-footer">More info <i class="fas fa-arrow-circle-right"></i></a>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-6">
+                            <div class="small-box bg-success">
+                                <div class="inner">
+                                    <h3>@($"${totalRevenue:N0}")</h3> 
+                                    <p>FY Revenue</p>
+                                </div>
+                                <div class="icon">
+                                    <i class="fas fa-dollar-sign"></i>
+                                </div>
+                                <a href="/reports/financials" class="small-box-footer">More info <i class="fas fa-arrow-circle-right"></i></a>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-6">
+                            <div class="small-box bg-warning">
+                                <div class="inner">
+                                    <h3>@mostProductiveUser</h3>
+                                    <p>Top Performer</p>
+                                </div>
+                                <div class="icon">
+                                    <i class="fas fa-user-clock"></i>
+                                </div>
+                                <a href="/reports/productivity" class="small-box-footer">More info <i class="fas fa-arrow-circle-right"></i></a>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-6">
+                            <div class="small-box bg-danger">
+                                <div class="inner">
+                                    <h3>@activeClientsCount</h3>
+                                    <p>Active Clients</p>
+                                </div>
+                                <div class="icon">
+                                    <i class="fas fa-building"></i>
+                                </div>
+                                <a href="/reports/operational" class="small-box-footer">More info <i class="fas fa-arrow-circle-right"></i></a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Row (Placeholders) -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card card-primary">
+                                <div class="card-header">
+                                    <h3 class="card-title">Project Status</h3>
+                                </div>
+                                <div class="card-body">
+                                    <!-- Placeholder for Chart -->
+                                    <p class="text-center">Active Projects Distribution</p>
+                                    <ul>
+                                        @foreach(var status in statusDistribution)
+                                        {
+                                            <li>@status.Key: @status.Value</li>
+                                        }
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card card-success">
+                                <div class="card-header">
+                                    <h3 class="card-title">Top Revenue Regions</h3>
+                                </div>
+                                <div class="card-body">
+                                    <!-- Placeholder for Chart -->
+                                     <p class="text-center">FY Revenue by Region</p>
+                                     <div class="table-responsive">
+                                         <table class="table table-sm">
+                                             <tbody>
+                                                 @foreach(var region in revenueByRegion.OrderByDescending(x => x.Value).Take(5))
+                                                 {
+                                                     <tr>
+                                                         <td>@region.Key</td>
+                                                         <td class="text-right">@region.Value.ToString("C0")</td>
+                                                     </tr>
+                                                 }
+                                             </tbody>
+                                         </table>
+                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    </Authorized>
+    <NotAuthorized>
+         <div class="text-center mt-5">
+            <h3>Access Denied</h3>
+            <p>You do not have permission to view reports.</p>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private bool isLoading = true;
+    
+    // Summary Data
+    private int activeProjectsCount;
+    private decimal totalRevenue;
+    private string mostProductiveUser = "N/A";
+    private int activeClientsCount;
+
+    // Chart Data
+    private Dictionary<string, int> statusDistribution = new();
+    private Dictionary<string, decimal> revenueByRegion = new();
+
+    private bool isAuthorized = false;
+    private string? regionFilter = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Simple auth check (expand later)
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var appUser = await AuthService.GetUserFromPrincipal(user); 
+
+        if (appUser != null)
+        {
+             isAuthorized = await PermissionService.UserHasPermission(appUser, "ViewReports");
+             if (isAuthorized)
+             {
+                 if (appUser.Role != UserRole.Admin)
+                 {
+                     regionFilter = appUser.Region;
+                 }
+                 await LoadData();
+             }
+             else
+             {
+                 isLoading = false;
+             }
+        }
+        else
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadData()
+    {
+        try {
+            // 1. Project Status
+            statusDistribution = await ReportingService.GetProjectStatusDistribution(regionFilter);
+            activeProjectsCount = statusDistribution.Where(x => x.Key == "In Progress").Sum(x => x.Value);
+
+            // 2. Financials
+            revenueByRegion = await ReportingService.GetRevenueByRegion(DateTime.Now.Month >= 7 ? DateTime.Now.Year : DateTime.Now.Year - 1, regionFilter);
+            totalRevenue = revenueByRegion.Sum(x => x.Value);
+
+            // 3. Productivity
+            var topUsers = await ReportingService.GetTopProductiveUsers(1, regionFilter);
+            if (topUsers.Any())
+            {
+                mostProductiveUser = topUsers.First().UserName;
+            }
+
+            // 4. Operational
+            activeClientsCount = await ReportingService.GetTotalActiveClients(regionFilter);
+        } 
+        finally 
+        {
+            isLoading = false;
+        }
+    }
+}

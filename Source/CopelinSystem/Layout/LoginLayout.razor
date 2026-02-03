@@ -1,0 +1,19 @@
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
+<div class="wrapper login-page-wrapper">
+    <div class="content-wrapper p-0 ml-0 bg-white">
+            <div class="pt-5">
+            <div class="text-center mb-4">
+                <h1><b>Copelin</b>System</h1>
+            </div>
+            @Body
+            </div>
+    </div>
+</div>
+
+<style>
+    /* Override AdminLTE sidebar-mini offsets for the login page */
+    .login-page-wrapper .content-wrapper {
+        margin-left: 0 !important;
+    }
+</style>

@@ -1,0 +1,456 @@
+@page "/help/admin"
+@rendermode InteractiveServer
+@using CopelinSystem.Services
+@using CopelinSystem.Models
+@using Microsoft.AspNetCore.Components.Forms
+
+@inject HelpService HelpService
+@inject PermissionService PermissionService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JSRuntime
+
+<AuthorizeView>
+    <Authorized>
+        <div class="container-fluid">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>Help System Management</h1>
+                <button class="btn btn-primary" @onclick="OpenAddSectionModal">
+                    <i class="fas fa-plus"></i> Add Section
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger mb-4">
+                    <i class="fas fa-exclamation-triangle mr-2"></i> @errorMessage
+                </div>
+            }
+
+            @if (isLoading)
+            {
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="row">
+                    <!-- Sections List -->
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0">Sections</h5>
+                            </div>
+                            <div class="list-group list-group-flush">
+                                @foreach (var helpItem in sections)
+                                {
+                                    <div class="list-group-item d-flex justify-content-between align-items-center @(selectedSection?.Id == helpItem.Id ? "bg-light" : "")" 
+                                         style="cursor: pointer;" 
+                                         @onclick="() => SelectSection(helpItem)">
+                                        <div>
+                                            <i class="fas fa-folder mr-2 text-warning"></i>
+                                            <strong>@helpItem.Title</strong>
+                                            <span class="badge badge-secondary ml-2">Order: @helpItem.Order</span>
+                                        </div>
+                                        <div>
+                                            <button class="btn btn-sm btn-outline-info" @onclick:stopPropagation="true" @onclick="() => EditSection(helpItem)">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick:stopPropagation="true" @onclick="() => DeleteSection(helpItem)">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Articles List -->
+                    <div class="col-md-8">
+                        @if (selectedSection != null)
+                        {
+                            <div class="card">
+                                <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">Articles in "@selectedSection.Title"</h5>
+                                    <button class="btn btn-sm btn-light text-info" @onclick="OpenAddArticleModal">
+                                        <i class="fas fa-plus"></i> Add Article
+                                    </button>
+                                </div>
+                                <div class="card-body p-0">
+                                    @if (!selectedSection.Articles.Any())
+                                    {
+                                        <div class="text-center py-4 text-muted">
+                                            <p>No articles in this section.</p>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <table class="table table-hover mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Order</th>
+                                                    <th>Title</th>
+                                                    <th>Media</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var article in selectedSection.Articles.OrderBy(a => a.Order))
+                                                {
+                                                    <tr>
+                                                        <td>@article.Order</td>
+                                                        <td>@article.Title</td>
+                                                        <td>
+                                                            @if (article.MediaType == "Image")
+                                                            {
+                                                                <i class="fas fa-image text-primary" title="Image"></i>
+                                                            }
+                                                            else if (article.MediaType == "Video")
+                                                            {
+                                                                <i class="fas fa-video text-danger" title="Video"></i>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="text-muted">-</span>
+                                                            }
+                                                        </td>
+                                                        <td>
+                                                            <button class="btn btn-sm btn-outline-info" @onclick="() => EditArticle(article)">
+                                                                <i class="fas fa-edit"></i>
+                                                            </button>
+                                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteArticle(article)">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle mr-2"></i> Select a section to view its articles.
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Section Modal -->
+        @if (showSectionModal)
+        {
+            <div class="modal fade show d-block" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
+                <div class="modal-dialog" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">@(editingSection.Id == 0 ? "Add Section" : "Edit Section")</h5>
+                            <button type="button" class="close" @onclick="CloseSectionModal">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label>Title</label>
+                                <input type="text" class="form-control" @bind="editingSection.Title" placeholder="Section Title" />
+                            </div>
+                            <div class="form-group">
+                                <label>Order</label>
+                                <input type="number" class="form-control" @bind="editingSection.Order" />
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseSectionModal">Cancel</button>
+                            <button type="button" class="btn btn-primary" @onclick="SaveSection">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Article Modal -->
+        @if (showArticleModal)
+        {
+            <div class="modal fade show d-block" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
+                <div class="modal-dialog modal-lg" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">@(editingArticle.Id == 0 ? "Add Article" : "Edit Article")</h5>
+                            <button type="button" class="close" @onclick="CloseArticleModal">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label>Title</label>
+                                <input type="text" class="form-control" @bind="editingArticle.Title" />
+                            </div>
+                             <div class="form-group">
+                                <label>Order</label>
+                                <input type="number" class="form-control" @bind="editingArticle.Order" />
+                            </div>
+                            <div class="form-group">
+                                <label>Content (HTML supported)</label>
+                                <textarea class="form-control" rows="5" @bind="editingArticle.Content"></textarea>
+                                <small class="text-muted">You can use basic HTML tags for formatting.</small>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Media Type</label>
+                                        <select class="form-control" @bind="editingArticle.MediaType">
+                                            <option value="None">None</option>
+                                            <option value="Image">Image</option>
+                                            <option value="Video">Video (Local MP4)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Media Source</label>
+                                        @if (editingArticle.MediaType != "None")
+                                        {
+                                            <div class="custom-file">
+                                                <InputFile class="custom-file-input" OnChange="@HandleFileUpload" accept="@(editingArticle.MediaType == "Image" ? "image/*" : "video/*")" />
+                                                <label class="custom-file-label">Choose file...</label>
+                                            </div>
+                                            <small class="form-text text-muted">Uploading overwrites existing media.</small>
+                                        }
+                                        else
+                                        {
+                                            <input type="text" class="form-control" disabled placeholder="Select Media Type first" />
+                                        }
+                                        <input type="hidden" @bind="editingArticle.MediaUrl" />
+                                    </div>
+                                </div>
+                            </div>
+                            @if (!string.IsNullOrEmpty(editingArticle.MediaUrl))
+                            {
+                                <div class="mt-2">
+                                    <label>Current Media:</label>
+                                    @if(editingArticle.MediaType == "Image") {
+                                        <div class="mb-2">
+                                            <img src="@editingArticle.MediaUrl" class="img-fluid" style="max-height: 200px;" />
+                                        </div>
+                                    } else if (editingArticle.MediaType == "Video") {
+                                        <div class="alert alert-secondary">
+                                            Video uploaded: <code>@editingArticle.MediaUrl</code>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseArticleModal">Cancel</button>
+                            <button type="button" class="btn btn-primary" @onclick="SaveArticle">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+    </Authorized>
+    <NotAuthorized>
+        <div class="alert alert-danger">You do not have permission to access this page.</div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<HelpSection> sections = new();
+    private HelpSection? selectedSection;
+    private bool isLoading = true;
+
+    // Modal State
+    private bool showSectionModal = false;
+    private HelpSection editingSection = new();
+
+    private bool showArticleModal = false;
+    private HelpArticle editingArticle = new();
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            // Basic check, robust check should happen in PermissionService or policies
+            // Assuming Admin role check or specific permission
+            
+            await LoadSections();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error initializing admin: {ex.Message}";
+        }
+    }
+
+    private async Task LoadSections()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            sections = await HelpService.GetAllSectionsAsync();
+            
+            // Refresh selected section if it exists
+            if (selectedSection != null)
+            {
+                selectedSection = sections.FirstOrDefault(s => s.Id == selectedSection.Id);
+            }
+            else if (sections.Any())
+            {
+                selectedSection = sections.First();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading sections: {ex.Message}";
+            Console.WriteLine(ex);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void SelectSection(HelpSection section)
+    {
+        selectedSection = section;
+    }
+
+    // --- Section Management ---
+
+    private void OpenAddSectionModal()
+    {
+        editingSection = new HelpSection { Order = sections.Count + 1 };
+        showSectionModal = true;
+    }
+
+    private void EditSection(HelpSection section)
+    {
+        editingSection = new HelpSection 
+        { 
+            Id = section.Id, 
+            Title = section.Title, 
+            Order = section.Order 
+        };
+        showSectionModal = true;
+    }
+
+    private async Task SaveSection()
+    {
+        if (editingSection.Id == 0)
+        {
+            await HelpService.CreateSectionAsync(editingSection);
+        }
+        else
+        {
+            await HelpService.UpdateSectionAsync(editingSection);
+        }
+        
+        showSectionModal = false;
+        await LoadSections();
+    }
+
+    private async Task DeleteSection(HelpSection section)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("Notifications.showConfirm", $"Are you sure you want to delete section '{section.Title}'? This will delete all articles inside it."))
+            return;
+
+        await HelpService.DeleteSectionAsync(section.Id);
+        selectedSection = null;
+        await LoadSections();
+    }
+
+    private void CloseSectionModal()
+    {
+        showSectionModal = false;
+    }
+
+    // --- Article Management ---
+
+    private void OpenAddArticleModal()
+    {
+        if (selectedSection == null) return;
+        
+        editingArticle = new HelpArticle 
+        { 
+            HelpSectionId = selectedSection.Id,
+            Order = selectedSection.Articles.Count + 1 
+        };
+        showArticleModal = true;
+    }
+
+    private void EditArticle(HelpArticle article)
+    {
+        editingArticle = new HelpArticle
+        {
+            Id = article.Id,
+            Title = article.Title,
+            Content = article.Content,
+            MediaType = article.MediaType,
+            MediaUrl = article.MediaUrl,
+            Order = article.Order,
+            HelpSectionId = article.HelpSectionId
+        };
+        showArticleModal = true;
+    }
+
+    private async Task SaveArticle()
+    {
+        if (editingArticle.Id == 0)
+        {
+            await HelpService.CreateArticleAsync(editingArticle);
+        }
+        else
+        {
+            await HelpService.UpdateArticleAsync(editingArticle);
+        }
+
+        showArticleModal = false;
+        await LoadSections();
+    }
+
+    private async Task DeleteArticle(HelpArticle article)
+    {
+        if (!await JSRuntime.InvokeAsync<bool>("Notifications.showConfirm", $"Are you sure you want to delete article '{article.Title}'?"))
+            return;
+
+        await HelpService.DeleteArticleAsync(article.Id);
+        await LoadSections();
+    }
+
+    private void CloseArticleModal()
+    {
+        showArticleModal = false;
+    }
+
+    private async Task HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var file = e.File;
+            if (file != null)
+            {
+                // Upload immediately
+                var relativePath = await HelpService.UploadMediaAsync(file);
+                editingArticle.MediaUrl = relativePath;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex) 
+        {
+            errorMessage = $"Upload failed: {ex.Message}";
+        }
+    }
+}

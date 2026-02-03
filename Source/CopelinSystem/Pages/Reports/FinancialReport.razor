@@ -1,0 +1,251 @@
+@page "/reports/financials"
+@using CopelinSystem.Services
+@using CopelinSystem.Models
+@inject ReportingService ReportingService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<AuthorizeView>
+    <Authorized>
+        <div class="content-header">
+            <div class="container-fluid">
+                <div class="row mb-2">
+                    <div class="col-sm-6">
+                        <h1 class="m-0">Financial Report (FY @startYear - @endYear)</h1>
+                    </div>
+                    <div class="col-sm-6">
+                        <ol class="breadcrumb float-sm-right">
+                            <li class="breadcrumb-item"><a href="/">Home</a></li>
+                            <li class="breadcrumb-item"><a href="/reports">Reports</a></li>
+                            <li class="breadcrumb-item active">Financials</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <section class="content">
+            <div class="container-fluid">
+                @if (isLoading)
+                {
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="sr-only">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else if (!isAuthorized)
+                {
+                     <div class="text-center mt-5">
+                        <h3>Access Denied</h3>
+                        <p>You do not have the required permissions ('View Reports') to view this report.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="row">
+                        <!-- Revenue Trend -->
+                        <div class="col-md-12">
+                            <div class="card card-outline card-success">
+                                <div class="card-header">
+                                    <h3 class="card-title">Monthly Revenue Trend</h3>
+                                </div>
+                                <div class="card-body">
+                                    <!-- Simple Bar Chart Visualization via HTML/CSS -->
+                                    <div class="d-flex justify-content-between" style="height: 250px; padding-bottom: 20px;">
+                                        @foreach (var m in monthlyTrend)
+                                        {
+                                            // Determine height percentage relative to max
+                                            // Scale to max 80% to ensure room for top numeric label and bottom text label
+                                            var heightPct = maxMonthlyRevenue > 0 ? (int)((m.Value / maxMonthlyRevenue) * 80) : 0;
+                                            if (heightPct < 1 && m.Value > 0) heightPct = 1; // Minimum visibility if non-zero
+                                            
+                                            <div class="d-flex flex-column justify-content-end align-items-center" style="height: 100%; width: 8%;">
+                                                <!-- Value Label -->
+                                                <small class="mb-1" style="font-size: 0.65rem; font-weight: bold;">@m.Value.ToString("C0")</small>
+                                                
+                                                <!-- Bar -->
+                                                <div class="bg-success w-100" style="height: @(heightPct)%; border-radius: 3px 3px 0 0;" title="@m.Value.ToString("C0")"></div>
+                                                
+                                                <!-- Month Label -->
+                                                <small class="mt-1" style="font-size: 0.7rem;">@m.Key.Split(' ')[0]</small>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- Top Clients -->
+                        <div class="col-md-6">
+                            <div class="card card-outline card-info">
+                                <div class="card-header">
+                                    <h3 class="card-title">Top Clients by Revenue</h3>
+                                </div>
+                                <div class="card-body p-0">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Client</th>
+                                                <th>Projects</th>
+                                                <th class="text-right">Revenue</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var c in topClients)
+                                            {
+                                                <tr>
+                                                    <td>@c.ClientName</td>
+                                                    <td>@c.ProjectCount</td>
+                                                    <td class="align-middle text-right">
+                                                        @c.TotalRevenue.ToString("C0")
+                                                        <div class="progress progress-xs mt-1">
+                                                            <div class="progress-bar bg-info" style="width: @(maxClientRevenue > 0 ? (c.TotalRevenue / maxClientRevenue * 100) : 0)%"></div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Revenue by Region -->
+                        <div class="col-md-6">
+                            <div class="card card-outline card-warning">
+                                <div class="card-header">
+                                    <h3 class="card-title">Revenue by Region</h3>
+                                </div>
+                                <div class="card-body p-0">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Region</th>
+                                                <th class="text-right">Revenue</th>
+                                                <th class="text-right">%</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var r in regionRevenue.OrderByDescending(x => x.Value))
+                                            {
+                                                var pct = totalRevenue > 0 ? (r.Value / totalRevenue) * 100 : 0;
+                                                var widthPct = maxRegionRevenue > 0 ? (r.Value / maxRegionRevenue * 100) : 0;
+                                                <tr>
+                                                    <td>@r.Key</td>
+                                                    <td class="align-middle text-right">
+                                                        @r.Value.ToString("C0")
+                                                        <div class="progress progress-xs mt-1">
+                                                            <div class="progress-bar bg-warning" style="width: @(widthPct)%"></div>
+                                                        </div>
+                                                    </td>
+                                                    <td class="text-right">@pct.ToString("F1")%</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    </Authorized>
+    <NotAuthorized>
+         <div class="text-center mt-5">
+            <h3>Access Denied</h3>
+            <p>You do not have permission to view reports.</p>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+@inject PermissionService PermissionService
+    private bool isLoading = true;
+    private bool isAuthorized = false;
+    private int startYear;
+    private int endYear;
+    private int selectedYear;
+    private int currentYear;
+    private List<int> availableYears = new();
+    
+    // Data
+    private Dictionary<string, decimal> monthlyTrend = new();
+    private Dictionary<string, decimal> regionRevenue = new();
+    private List<(string ClientName, decimal TotalRevenue, int ProjectCount)> topClients = new();
+    
+    private decimal maxMonthlyRevenue = 0;
+    private decimal totalRevenue = 0;
+    
+    // Max values for bars
+    private decimal maxClientRevenue = 0;
+    private decimal maxRegionRevenue = 0;
+
+    private string? regionFilter = null;
+
+@inject AuthenticationService AuthService
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var appUser = await AuthService.GetUserFromPrincipal(user);
+
+        if (appUser != null)
+        {
+             isAuthorized = await PermissionService.UserHasPermission(appUser, "ViewReports");
+             if (isAuthorized)
+             {
+                 if (appUser.Role != UserRole.Admin)
+                 {
+                     regionFilter = appUser.Region;
+                 }
+                currentYear = DateTime.Now.Month >= 7 ? DateTime.Now.Year : DateTime.Now.Year - 1;
+                selectedYear = currentYear;
+                
+                // Populate years (last 5)
+                for (int i = 0; i < 5; i++)
+                {
+                    availableYears.Add(currentYear - i);
+                }
+
+                startYear = selectedYear;
+                endYear = selectedYear + 1;
+                await LoadData();
+             }
+             else 
+             {
+                 isLoading = false;
+             }
+        }
+        else
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadData()
+    {
+        try {
+            // 1. Trend
+            monthlyTrend = await ReportingService.GetMonthlyRevenueTrend(startYear, regionFilter);
+            if (monthlyTrend.Any()) maxMonthlyRevenue = monthlyTrend.Values.Max();
+
+            // 2. Region
+            regionRevenue = await ReportingService.GetRevenueByRegion(startYear, regionFilter);
+            totalRevenue = regionRevenue.Sum(x => x.Value);
+            if (regionRevenue.Any()) maxRegionRevenue = regionRevenue.Values.Max();
+
+            // 3. Clients
+            topClients = await ReportingService.GetTopClientsByRevenue(startYear, 10, regionFilter);
+            if (topClients.Any()) maxClientRevenue = topClients.Max(x => x.TotalRevenue);
+        } 
+        finally 
+        {
+            isLoading = false;
+        }
+    }
+}

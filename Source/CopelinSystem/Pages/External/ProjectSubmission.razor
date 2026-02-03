@@ -1,0 +1,262 @@
+@page "/external/submission/{Token:guid}"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject ProjectService ProjectService
+@inject SubmissionTokenService TokenService
+@inject FileSystemService FileService
+@using CopelinSystem.Layout
+@using CopelinSystem.Pages.FileExplorer
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@layout ExternalLayout
+@rendermode InteractiveServer
+
+<PageTitle>Inter-Departmental Data Submission</PageTitle>
+
+@if (isValidToken)
+{
+        <section class="content-header">
+            <div class="container-fluid">
+                <div class="row mb-2">
+                    <div class="col-sm-6">
+                        <h1>Inter-Departmental Data Submission</h1>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="content">
+            <div class="container-fluid">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        @if (project == null)
+                        {
+                            <div class="alert alert-danger">
+                                <h5><i class="icon fas fa-ban"></i> Error!</h5>
+                                Project not found or invalid link. Please check the URL and try again.
+                            </div>
+                        }
+                        else
+                        {
+                            <!-- Submission Form -->
+                            <div class="card card-success card-outline">
+                                <div class="card-header">
+                                    <h3 class="card-title">
+                                        @if (!string.IsNullOrEmpty(Dept))
+                                        {
+                                            <span>Request for information from @Dept<br />Estimating is requesting information for the below details.<br />You can review associated files below.</span>
+                                        }
+                                        else
+                                        {
+                                            <span>Update Details</span>
+                                        }
+                                    </h3>
+
+                                </div>
+                                <div class="card-body">
+                                    <div class="alert alert-info">
+                                        <h5><i class="icon fas fa-info"></i> Active Project</h5>
+                                        <strong>@project.ProjectName</strong><br/>
+                                        Location: @project.ProjectLocation<br/>
+                                        WR: @project.ProjectWr<br/>
+                                    </div>
+
+                                    @if (internalDepartmentalFolderId.HasValue)
+                                    {
+                                        <div class="card card-secondary card-outline">
+                                            <div class="card-header">
+                                                <h3 class="card-title"><i class="fas fa-folder-open"></i> Inter-Departmental Files</h3>
+                                            </div>
+                                            <div class="card-body p-0" style="height: 300px; overflow-y: auto;">
+                                                <div class="p-2 bg-light border-bottom">
+                                                     <small class="text-muted"><i class="fas fa-info-circle"></i> Double-click to open folders or files.</small>
+                                                </div>
+                                                <FileListView ProjectId="@project.ProjectId" 
+                                                              ParentId="@(currentFolderId ?? internalDepartmentalFolderId.Value)" 
+                                                              Breadcrumb="@breadcrumb"
+                                                              OnNavigate="HandleNavigation"
+                                                              OnContextMenu="HandleContextMenu"
+                                                              OnFileOpen="HandleFileOpen"
+                                                              @ref="fileListView" />
+                                            </div>
+                                            @if (currentFolderId != null && currentFolderId != internalDepartmentalFolderId.Value)
+                                            {
+                                                <div class="card-footer p-2">
+                                                    <button class="btn btn-sm btn-default" @onclick="NavigateUp"><i class="fas fa-level-up-alt"></i> Up One Level</button>
+                                                </div>
+                                            }
+                                        </div>
+                                        
+                                        <CopelinSystem.Shared.FileViewerModal @ref="fileViewer" />
+                                    }
+
+                                    <div class="form-group">
+                                        <label>Work Order Number (WO) @if(!string.IsNullOrEmpty(project.ProjectWo)) { <small class="text-danger">(Locked)</small> }</label>
+                                        <input type="text" class="form-control" @bind="project.ProjectWo" placeholder="Enter WO Number" readonly="@(!string.IsNullOrEmpty(project.ProjectWo))" />
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Requisition Order Number (REQ) @if(!string.IsNullOrEmpty(project.ProjectReqOrder)) { <small class="text-danger">(Locked)</small> }</label>
+                                        <input type="text" class="form-control" @bind="project.ProjectReqOrder" placeholder="Enter REQ Number" readonly="@(!string.IsNullOrEmpty(project.ProjectReqOrder))" />
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Purchase Order Number (PO) @if(!string.IsNullOrEmpty(project.ProjectPurchaseOrder)) { <small class="text-danger">(Locked)</small> }</label>
+                                        <input type="text" class="form-control" @bind="project.ProjectPurchaseOrder" placeholder="Enter PO Number" readonly="@(!string.IsNullOrEmpty(project.ProjectPurchaseOrder))" />
+                                    </div>
+                                </div>
+                                <div class="card-footer">
+                                    <button class="btn btn-success btn-block" @onclick="SubmitData">
+                                        <i class="fas fa-save"></i> Submit Updates
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </section>
+}
+else
+{
+    @if (isTokenChecked)
+    {
+        <div class="container mt-5">
+             <div class="alert alert-danger text-center">
+                <h5><i class="icon fas fa-ban"></i> Access Denied</h5>
+                <p>This link is invalid, expired, or has already been used.</p>
+                <p>Please request a new link if you need to make further changes.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+         <div class="text-center mt-5">
+            <p>Validating access...</p>
+        </div>
+    }
+}
+
+
+@code {
+    [Parameter]
+    public Guid Token { get; set; }
+
+    private ProjectList? project;
+    private string Dept = "";
+    private bool isValidToken = false;
+    private bool isTokenChecked = false;
+    private SubmissionToken? tokenEntity;
+
+    private int? internalDepartmentalFolderId;
+    private int? currentFolderId;
+    private FileListView? fileListView;
+    private CopelinSystem.Shared.FileViewerModal? fileViewer;
+    private string breadcrumb = "Inter-Departmental Files";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 1. Validate Token
+        tokenEntity = await TokenService.ValidateToken(Token);
+
+        if (tokenEntity != null)
+        {
+            isValidToken = true;
+            Dept = tokenEntity.Department ?? "";
+            
+            // 2. Load Project
+            project = await ProjectService.GetProjectById(tokenEntity.ProjectId);
+
+             // 3. Load Internal Folder
+            if (project != null)
+            {
+               var folder = await FileService.GetFolderByName(project.ProjectId, "Inter-Departmental Files");
+               if (folder != null)
+               {
+                   internalDepartmentalFolderId = folder.Id;
+                   // Start at root of this folder (which means ParentId = folder.Id for its children)
+                   // The FileListView takes ParentId as the "Current Folder ID" whose children to show.
+                   currentFolderId = internalDepartmentalFolderId;
+               }
+            }
+        }
+        
+        isTokenChecked = true;
+    }
+
+    private void HandleNavigation(SelectionEventArgs args)
+    {
+        if (args.Type == SelectionType.Folder && args.Folder != null)
+        {
+            currentFolderId = args.Folder.Id;
+            breadcrumb += $" > {args.Folder.Name}";
+        }
+    }
+    
+    private void NavigateUp()
+    {
+        // Simple logic: If deep, we can't easily go up one level without knowing the parent of current folder.
+        // For this specific limited view, we could reset to root or fetch parent.
+        // Let's just reset to root for simplicity if we don't have full navigation stack, 
+        // OR better: Since FileSystemItem knows its parent, we could fetch 'currentFolder' to find its parent.
+        // But we don't hold the 'currentFolder' object, just ID.
+        // Let's implement a simple "Back to Root" for now to act as "Up" if deeper logic is missing.
+        // Actually, let's implement true "Up" by reloading the current item to check its parent.
+        
+        // This is a future improvement. For now, reset to root is safest.
+        if (internalDepartmentalFolderId.HasValue)
+        {
+            currentFolderId = internalDepartmentalFolderId.Value;
+            breadcrumb = "Inter-Departmental Files";
+        }
+    }
+
+    private void HandleFileOpen(FileSystemItem item)
+    {
+        OpenFile(item);
+    }
+
+    private void HandleContextMenu(ContextMenuEventArgs args)
+    {
+        // Read-only view for inter-departmental? Or allow download?
+        // FileListView already handles double-click to open. 
+        // Context menu might be overkill or strictly for view/download.
+        // Let's allow View.
+         if (args.Type == SelectionType.File && args.Folder != null)
+         {
+             // Open file
+             OpenFile(args.Folder);
+         }
+    }
+
+    private void OpenFile(FileSystemItem file)
+    {
+         // We generate a temp token or just pass it to viewer
+         // ViewCode logic from FileExplorer
+         var viewToken = Guid.NewGuid().ToString("N");
+         // We might need to cache this token if the Viewer checks auth/cache
+         // But FileViewerModal just takes an item.
+         fileViewer?.Show(file, viewToken);
+    }
+
+    private async Task SubmitData()
+    {
+        if (project == null) return;
+
+        bool success = await ProjectService.UpdateProject(project);
+        if (success)
+        {
+            // Mark token as used
+            await TokenService.MarkTokenUsed(Token);
+            isValidToken = false; // Prevent further edits immediately
+
+            await JSRuntime.InvokeVoidAsync("Notifications.showSuccess", "Details updated successfully! This link has now expired.");
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("Notifications.showError", "Failed to update project. Please try again.");
+        }
+    }
+}

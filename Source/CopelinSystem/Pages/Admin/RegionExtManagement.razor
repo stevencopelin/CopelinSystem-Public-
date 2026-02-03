@@ -1,0 +1,272 @@
+@page "/admin/external-region"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@using System.Security.Claims
+@inject RegionEmailService RegionEmailService
+@inject ApplicationDbContext DbContext
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject PermissionService PermissionService
+@using Microsoft.EntityFrameworkCore
+@rendermode InteractiveServer
+
+<AuthorizeView>
+    <Authorized>
+        @if (isAuthorized)
+        {
+            <div class="container-fluid mt-3">
+                <h3>External Region Email Management</h3>
+                <p class="text-muted">Configure default contact emails for external information requests by region and department.</p>
+
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label><strong>Region:</strong></label>
+                        @if (allowedRegions.Count > 1)
+                        {
+                            <select class="form-control" @onchange="OnRegionChanged">
+                                <option value="0">-- Select a Region --</option>
+                                @foreach (var region in allowedRegions)
+                                {
+                                    <option value="@region.RegionId" selected="@(region.RegionId == selectedRegionId)">@region.RegionName</option>
+                                }
+                            </select>
+                        }
+                        else if (allowedRegions.Any())
+                        {
+                            <p class="form-control-plaintext mb-0"><strong>@allowedRegions.First().RegionName</strong></p>
+                        }
+                        else
+                        {
+                            <div class="alert alert-warning">No regions found or assigned.</div>
+                        }
+                    </div>
+                </div>
+
+                @if (selectedRegionId > 0)
+                {
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">Email Configurations for @selectedRegionName</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-striped mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 30%">Department</th>
+                                        <th style="width: 50%">Email Address</th>
+                                        <th style="width: 20%">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var dept in departments)
+                                    {
+                                        var existingEmail = currentEmails.FirstOrDefault(e => e.Department == dept);
+                                        <tr>
+                                            <td><strong>@dept</strong></td>
+                                            <td>
+                                                @if (existingEmail != null)
+                                                {
+                                                    <span>@existingEmail.EmailAddress</span>
+                                                }
+                                                else
+                                                {
+                                                    <em class="text-muted">Not Configured</em>
+                                                }
+                                            </td>
+                                            <td>
+                                                <button class="btn btn-sm btn-primary" @onclick="() => EditEmail(dept, existingEmail)">
+                                                    <i class="fas fa-edit"></i> Configure
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @if (showModal)
+            {
+                <div class="modal fade show" style="display: block; background-color: rgba(0,0,0,0.5);" tabindex="-1" role="dialog">
+                    <div class="modal-dialog" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Configure Email: @editingDepartment</h5>
+                                <button type="button" class="close" @onclick="CloseModal">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="form-group">
+                                    <label>Email Address</label>
+                                    <input type="email" class="form-control" @bind="editingEmailAddress" placeholder="e.g. procurement@example.com" />
+                                </div>
+                                @if (!string.IsNullOrEmpty(errorMessage))
+                                {
+                                    <div class="text-danger mt-2">@errorMessage</div>
+                                }
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                                <button type="button" class="btn btn-primary" @onclick="SaveEmail">Save Changes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="alert alert-danger">
+                <h4>Access Denied</h4>
+                <p>You do not have permission to access this page.</p>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="alert alert-danger">Please log in to view this page.</div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private bool isAuthorized = false;
+    private User? currentUser;
+    private List<Region> allowedRegions = new();
+    private int selectedRegionId;
+    private string selectedRegionName = "";
+    private List<ExternalRegionEmail> currentEmails = new();
+    
+    // Modal state
+    private bool showModal = false;
+    private string editingDepartment = "";
+    private string editingEmailAddress = "";
+    private ExternalRegionEmail? editingEntity;
+    private string errorMessage = "";
+
+    private readonly List<string> departments = new() { "Procurement", "WOC", "WOM", "REQ" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+             // 1. Get detailed user info
+            var userIdClaim = user.FindFirst("UserId");
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                 // We need to fetch the full user object to check properties like Region
+                currentUser = await DbContext.Users.FindAsync(userId);
+                
+                if (currentUser != null)
+                {
+                    // 2. Check Permission
+                    isAuthorized = await PermissionService.UserHasPermission(currentUser, "ManageExternalRegion");
+
+                    if (isAuthorized)
+                    {
+                        await LoadRegions();
+                    }
+                }
+            }
+        }
+    }
+
+    private async Task LoadRegions()
+    {
+        if (currentUser == null) return;
+
+        var allRegions = await DbContext.Regions.ToListAsync();
+
+        if (currentUser.Role == UserRole.Admin)
+        {
+            allowedRegions = allRegions;
+        }
+        else if (!string.IsNullOrEmpty(currentUser.Region))
+        {
+            allowedRegions = allRegions.Where(r => r.RegionName == currentUser.Region).ToList();
+            
+            // Auto-select single region
+            if (allowedRegions.Count == 1)
+            {
+                selectedRegionId = allowedRegions[0].RegionId;
+                selectedRegionName = allowedRegions[0].RegionName;
+                await LoadEmails();
+            }
+        }
+    }
+
+    private async Task OnRegionChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int regionId) && regionId > 0)
+        {
+            selectedRegionId = regionId;
+            var region = allowedRegions.FirstOrDefault(r => r.RegionId == regionId);
+            selectedRegionName = region?.RegionName ?? "";
+            await LoadEmails();
+        }
+        else
+        {
+            selectedRegionId = 0;
+            selectedRegionName = "";
+            currentEmails.Clear();
+        }
+    }
+
+    private async Task LoadEmails()
+    {
+        if (selectedRegionId > 0)
+        {
+            currentEmails = await RegionEmailService.GetEmailsByRegion(selectedRegionId);
+        }
+    }
+
+    private void EditEmail(string department, ExternalRegionEmail? existing)
+    {
+        editingDepartment = department;
+        editingEntity = existing;
+        editingEmailAddress = existing?.EmailAddress ?? "";
+        errorMessage = "";
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        editingEntity = null;
+        editingDepartment = "";
+        editingEmailAddress = "";
+    }
+
+    private async Task SaveEmail()
+    {
+        if (string.IsNullOrWhiteSpace(editingEmailAddress))
+        {
+            errorMessage = "Email address is required.";
+            return;
+        }
+
+        try 
+        {
+            var emailToSave = editingEntity ?? new ExternalRegionEmail
+            {
+                RegionId = selectedRegionId,
+                Department = editingDepartment
+            };
+            
+            emailToSave.EmailAddress = editingEmailAddress;
+
+            await RegionEmailService.SaveEmail(emailToSave, currentUser!);
+            
+            await LoadEmails();
+            CloseModal();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving: {ex.Message}";
+        }
+    }
+}

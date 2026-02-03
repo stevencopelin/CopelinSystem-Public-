@@ -1,0 +1,124 @@
+@page "/test-email"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject EmailService EmailService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Test Email Integration</PageTitle>
+
+<div class="container-fluid mt-3">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Test Email Integration</h3>
+                </div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(resultMessage))
+                    {
+                        <div class="alert @(isSuccess ? "alert-success" : "alert-danger")">
+                            @resultMessage
+                        </div>
+                    }
+
+                    <div class="form-group">
+                        <label>Subject</label>
+                        <input type="text" class="form-control" @bind="subject" placeholder="Test Email WR-1234567" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>From</label>
+                        <input type="text" class="form-control" @bind="from" placeholder="test@example.com" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>To</label>
+                        <input type="text" class="form-control" @bind="to" placeholder="projects@hpw.qld.gov.au" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Body</label>
+                        <textarea class="form-control" rows="5" @bind="body" placeholder="This is a test email for work request 1234567"></textarea>
+                    </div>
+
+                    <button class="btn btn-primary" @onclick="SubmitEmail" disabled="@isSubmitting">
+                        @if (isSubmitting)
+                        {
+                            <span class="spinner-border spinner-border-sm mr-2"></span>
+                        }
+                        Submit Test Email
+                    </button>
+                </div>
+            </div>
+
+            @if (lastEmail != null)
+            {
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h4>Last Submitted Email</h4>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Email ID:</strong> @lastEmail.EmailId</p>
+                        <p><strong>WR Number:</strong> @(lastEmail.ProjectWr ?? "None extracted")</p>
+                        <p><strong>Project ID:</strong> @(lastEmail.ProjectId?.ToString() ?? "Not matched")</p>
+                        <p><strong>Is Matched:</strong> @(lastEmail.IsMatched ? "✓ Yes" : "✗ No")</p>
+                        <p><strong>Received Date:</strong> @lastEmail.ReceivedDate.ToString("dd-MM-yyyy HH:mm")</p>
+                        
+                        @if (lastEmail.ProjectId != null)
+                        {
+                            <a href="/projects/view/@lastEmail.ProjectId" class="btn btn-info">
+                                View Project
+                            </a>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string subject = "Test Email WR-909090";
+    private string from = "test@example.com";
+    private string to = "projects@hpw.qld.gov.au";
+    private string body = "This is a test email for work request 909090";
+    
+    private bool isSubmitting = false;
+    private string resultMessage = "";
+    private bool isSuccess = false;
+    private ProjectEmail? lastEmail = null;
+
+    private async Task SubmitEmail()
+    {
+        isSubmitting = true;
+        resultMessage = "";
+        
+        try
+        {
+            lastEmail = await EmailService.SaveEmail(
+                subject,
+                from,
+                to,
+                body,
+                null, // no HTML body
+                DateTime.Now,
+                null  // no attachments
+            );
+
+            isSuccess = true;
+            resultMessage = lastEmail.IsMatched 
+                ? $"✓ Email saved successfully! Matched to project (WR: {lastEmail.ProjectWr})" 
+                : $"✓ Email saved but no matching project found. WR extracted: {lastEmail.ProjectWr ?? "None"}";
+        }
+        catch (Exception ex)
+        {
+            isSuccess = false;
+            resultMessage = $"✗ Error: {ex.Message}";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

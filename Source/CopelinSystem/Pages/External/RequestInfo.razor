@@ -1,0 +1,271 @@
+@page "/projects/request-info/{ProjectId:int}"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Authorization
+@inject ProjectService ProjectService
+@inject SubmissionTokenService TokenService
+@inject EmailService EmailService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthStateProvider
+@inject PermissionService PermissionService
+@inject AuthenticationService AuthService
+@inject RegionEmailService RegionEmailService
+@inject ApplicationDbContext DbContext
+@rendermode InteractiveServer
+
+<PageTitle>Request External Info</PageTitle>
+
+        <section class="content">
+            <div class="container-fluid">
+                @if (isLoading)
+                {
+                    <div class="text-center mt-5">
+                       <i class="fas fa-spinner fa-spin fa-2x"></i>
+                       <p>Verifying access...</p>
+                    </div>
+                }
+                else if (!hasPermission)
+                {
+                    <div class="text-center mt-5">
+                        <h3>Access Denied</h3>
+                        <p>You do not have permission to access this page.</p>
+                        <a href="/projects" class="btn btn-primary">Back to Projects</a>
+                    </div>
+                }
+                else if (project == null)
+                {
+                    <div class="text-center">Loading project details...</div>
+                }
+                else
+                {
+                    <div class="row justify-content-center">
+                        <div class="col-md-8">
+                            <div class="card card-primary card-outline">
+                                <div class="card-header">
+                                    <h3 class="card-title">Generate Submission Link</h3>
+                                </div>
+                                <div class="card-body">
+                                    <div class="callout callout-info">
+                                        <h5>Project: @project.ProjectName</h5>
+                                        <p>
+                                            <strong>WR:</strong> @project.ProjectWr <br/>
+                                            <strong>Location:</strong> @project.ProjectLocation
+                                        </p>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label>Select Department</label>
+                                        <select class="form-control" @bind="selectedDept" @bind:after="GenerateLink">
+                                            <option value="">-- Select Department --</option>
+                                            <option value="Procurement">Procurement (PO)</option>
+                                            <option value="WOC">WOC (WO)</option>
+                                            <option value="WOM">WOM (WO Management)</option>
+                                            <option value="REQ">REQ (REQ)</option>
+                                           
+                                        </select>
+                                        <small class="text-muted">Select the department you are requesting information from.</small>
+                                    </div>
+
+                                    @if (!string.IsNullOrEmpty(generatedLink))
+                                    {
+                                        <div class="form-group mt-4">
+                                            <label>Shareable Link</label>
+                                            <div class="input-group">
+                                                <input type="text" class="form-control" value="@generatedLink" readonly id="shareLink" />
+                                                <div class="input-group-append">
+                                                    <button class="btn btn-success" @onclick="CopyLink">
+                                                        <i class="fas fa-copy"></i> Copy Link
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="mt-2 text-success" style="display: @(linkCopied ? "block" : "none")">
+                                                <i class="fas fa-check"></i> Link copied to clipboard!
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="mt-3">
+                                            <a href="@generatedLink" target="_blank" class="btn btn-default btn-sm">
+                                                <i class="fas fa-external-link-alt"></i> Test Link
+                                            </a>
+                                        </div>
+
+                                        <hr />
+                                        
+                                        <div class="form-group">
+                                            <label>Send via Email (Auto-populated)</label>
+                                            <div class="input-group">
+                                                <input type="email" class="form-control" placeholder="Recipient email" value="@recipientEmail" readonly />
+                                                <div class="input-group-append">
+                                                    <button class="btn btn-info" @onclick="SendLinkViaEmail" disabled="@(isSending || string.IsNullOrWhiteSpace(recipientEmail))">
+                                                        @if (isSending)
+                                                        {
+                                                            <i class="fas fa-spinner fa-spin"></i>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="fas fa-envelope"></i>
+                                                        }
+                                                        Send Link
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="card-footer">
+                                    <a href="/projects/view/@ProjectId" class="btn btn-secondary">Back to Project</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+
+@code {
+    [Parameter]
+    public int ProjectId { get; set; }
+
+    private ProjectList? project;
+    private string selectedDept = "";
+    private string generatedLink = "";
+    private bool linkCopied = false;
+    private bool hasPermission = false;
+    private bool isLoading = true;
+    private User? currentUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true;
+        
+        // 1. Check Permission
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId");
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                currentUser = await AuthService.GetUserById(userId);
+                if (currentUser != null)
+                {
+                    hasPermission = await PermissionService.UserHasPermission(currentUser, "RequestExternalInfo");
+                }
+            }
+        }
+        
+        // 2. Load Project if allowed
+        if (hasPermission)
+        {
+             project = await ProjectService.GetProjectById(ProjectId);
+        }
+
+        isLoading = false;
+    }
+
+    private async Task GenerateLink()
+    {
+        if (string.IsNullOrEmpty(selectedDept))
+        {
+            generatedLink = "";
+            return;
+        }
+
+        var token = await TokenService.GenerateToken(ProjectId, selectedDept);
+        var baseUri = Navigation.BaseUri;
+        // Construct the link: /external/submission/{Token}
+        generatedLink = $"{baseUri}external/submission/{token}";
+        linkCopied = false;
+
+        // Auto-populate email based on Department
+        recipientEmail = ""; // Default empty
+        
+        if (project != null && !string.IsNullOrEmpty(project.ProjectRegion) && !string.IsNullOrEmpty(selectedDept))
+        {
+            try 
+            {
+                // Find Region ID by Name
+                var region = await DbContext.Regions.FirstOrDefaultAsync(r => r.RegionName == project.ProjectRegion);
+                if (region != null)
+                {
+                    var dynamicEmail = await RegionEmailService.GetEmailForDepartment(region.RegionId, selectedDept);
+                    if (!string.IsNullOrEmpty(dynamicEmail))
+                    {
+                        recipientEmail = dynamicEmail;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching region email: {ex.Message}");
+            }
+        }
+        
+        // Fallback default if nothing found (optional, or leave empty)
+        if (string.IsNullOrEmpty(recipientEmail))
+        {
+            /* 
+             recipientEmail = selectedDept switch
+            {
+                "Procurement" => "procurement@hpw.qld.gov.au",
+                "WOC" => "woc@hpw.qld.gov.au",
+                "WOM" => "wom@hpw.qld.gov.au",
+                "REQ" => "req@hpw.qld.gov.au",
+                _ => ""
+            };
+            */
+            // Keeping it empty as per requirement to use configured emails
+        }
+    }
+
+    private async Task CopyLink()
+    {
+        if (!string.IsNullOrEmpty(generatedLink))
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", generatedLink);
+            linkCopied = true;
+            // Hide message after 3 seconds
+            await Task.Delay(3000);
+            linkCopied = false;
+            StateHasChanged();
+        }
+    }
+
+    private string recipientEmail = "";
+    private bool isSending = false;
+
+    private async Task SendLinkViaEmail()
+    {
+        if (string.IsNullOrWhiteSpace(recipientEmail) || string.IsNullOrEmpty(generatedLink)) return;
+
+        isSending = true;
+        StateHasChanged();
+
+        var subject = $"Information Request: {project?.ProjectName} ({project?.ProjectWr})";
+        var body = $@"
+            <h3>Information Request</h3>
+            <p>Please click the link below to provide the requested information for project <strong>{project?.ProjectName}</strong>.</p>
+            <p><a href='{generatedLink}'>{generatedLink}</a></p>
+            <p>Department: {selectedDept}</p>
+            <p>Note: This link is valid for one-time use only.</p>
+        ";
+
+        var (success, error) = await EmailService.SendEmailAsync(recipientEmail, subject, body);
+
+        if (success)
+        {
+            await JSRuntime.InvokeVoidAsync("Notifications.showSuccess", "Email sent successfully!");
+            recipientEmail = ""; // Clear input
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("Notifications.showError", $"Failed to send email: {error}");
+        }
+
+        isSending = false;
+        StateHasChanged();
+    }
+}

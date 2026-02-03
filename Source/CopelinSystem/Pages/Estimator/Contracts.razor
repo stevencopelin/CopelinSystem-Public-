@@ -1,0 +1,235 @@
+@page "/estimator-tools/contracts"
+@inject AuthenticationStateProvider AuthStateProvider
+@using CopelinSystem.Layout
+@using Microsoft.AspNetCore.Authorization
+
+<PageTitle>Contracts - Copelin Work Flow Management</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        @if (canView)
+        {
+            <section class="content-header">
+                <div class="container-fluid">
+                    <div class="row mb-2">
+                        <div class="col-sm-6">
+                            <h1>Contracts & Templates</h1>
+                        </div>
+                        <div class="col-sm-6">
+                             <ol class="breadcrumb float-sm-right">
+                                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                                <li class="breadcrumb-item active">Estimator Tools</li>
+                                <li class="breadcrumb-item active">Contracts</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="content">
+                <div class="container-fluid">
+                    
+                    <!-- General Guidance -->
+                    <div class="row mb-4">
+                        <div class="col-md-6 mb-3">
+                            <div class="card card-primary card-outline h-100">
+                                <div class="card-header">
+                                    <h5 class="card-title m-0">BCM Contract Selection and Advice</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Guidance on contract selection and procurement advice for building construction and maintenance.</p>
+                                    <a href="https://www.forgov.qld.gov.au/finance-and-procurement/procurement/buy-for-queensland-government/buying-categories/building-construction-and-maintenance/bcm-contract-selection-management-and-advice" class="btn btn-primary" target="_blank">View Contract Advice</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="card card-primary card-outline h-100">
+                                <div class="card-header">
+                                    <h5 class="card-title m-0">BCM Contract Templates</h5>
+                                </div>
+                                <div class="card-body">
+                                    <p class="card-text">Access the standard templates for contracts related to building, construction, and maintenance services.</p>
+                                    <a href="https://www.forgov.qld.gov.au/finance-and-procurement/procurement/buy-for-queensland-government/buying-categories/building-construction-and-maintenance/bcm-contract-selection-management-and-advice/bcm-contracts-templates" class="btn btn-primary" target="_blank">View Templates</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- OneNote Link -->
+                    <div class="row mb-5">
+                        <div class="col-12">
+                             <div class="callout callout-info">
+                                <h5><i class="fas fa-info-circle"></i> Procurement OneNote</h5>
+                                <p>Please refer to the below button to access Procurement Contract templates before downloading your specific contract.</p>
+                                <a href="onenote:https://hpwqld-my.sharepoint.com/personal/leah_salter_epw_qld_gov_au/Documents/Procurement%20OneNote/Procurement.one#section-id={AE5CEA62-76F5-414A-B3FE-37E735087F4A}&end" class="btn btn-info">
+                                    <i class="fas fa-book-open"></i> Open in OneNote
+                                </a>
+                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Minor Works -->
+                    <h4 class="mb-3 text-secondary"><i class="fas fa-folder-open"></i> Minor Works</h4>
+                    <div class="row mb-4">
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title font-weight-bold">Tender Requirements</h5>
+                                    <p class="card-text small text-muted mt-2">For use on building construction or maintenance projects up to the value of $250,000 (including GST).</p>
+                                    <a href="https://www.forgov.qld.gov.au/__data/assets/word_doc/0027/493740/minor-works-tender-requirements.docx" class="btn btn-outline-primary btn-sm btn-block" target="_blank"><i class="fas fa-download"></i> Download .docx</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title font-weight-bold">Tender Form</h5>
+                                    <p class="card-text small text-muted mt-2">For use on building construction or maintenance projects up to the value of $250,000 (including GST).</p>
+                                    <a href="https://www.forgov.qld.gov.au/__data/assets/word_doc/0035/493739/minor-works-tender-form.docx" class="btn btn-outline-primary btn-sm btn-block" target="_blank"><i class="fas fa-download"></i> Download .docx</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title font-weight-bold">Conditions of Contract</h5>
+                                    <p class="card-text small text-muted mt-2">For use on building construction or maintenance projects up to the value of $250,000 (including GST).</p>
+                                    <a href="https://www.forgov.qld.gov.au/__data/assets/word_doc/0019/340705/minor-works-conditions-of-contract.docx" class="btn btn-outline-primary btn-sm btn-block" target="_blank"><i class="fas fa-download"></i> Download .docx</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Medium Works -->
+                    <h4 class="mb-3 text-secondary"><i class="fas fa-folder-open"></i> Medium Works</h4>
+                    <div class="row mb-4">
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title font-weight-bold">Tender Requirements</h5>
+                                    <p class="card-text small text-muted mt-2">For use on building construction projects with a value less than $1 million (including GST).</p>
+                                    <a href="https://www.forgov.qld.gov.au/__data/assets/word_doc/0029/493742/medium-works-tender-requirements.docx" class="btn btn-outline-primary btn-sm btn-block" target="_blank"><i class="fas fa-download"></i> Download .docx</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title font-weight-bold">Tender Form</h5>
+                                     <p class="card-text small text-muted mt-2">For use on building construction projects with a value less than $1 million (including GST).</p>
+                                    <a href="https://www.forgov.qld.gov.au/__data/assets/word_doc/0028/493741/medium-works-tender-form.docx" class="btn btn-outline-primary btn-sm btn-block" target="_blank"><i class="fas fa-download"></i> Download .docx</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title font-weight-bold">Conditions of Contract</h5>
+                                     <p class="card-text small text-muted mt-2">For use on building construction projects with a value less than $1 million (including GST).</p>
+                                    <a href="https://www.forgov.qld.gov.au/__data/assets/word_doc/0015/340701/medium-works-conditions-contract.docx" class="btn btn-outline-primary btn-sm btn-block" target="_blank"><i class="fas fa-download"></i> Download .docx</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AS2124-1992 -->
+                    <h4 class="mb-3 text-secondary"><i class="fas fa-folder-open"></i> AS2124-1992</h4>
+                    <div class="row mb-4">
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title font-weight-bold">Tender Requirements</h5>
+                                     <p class="card-text small text-muted mt-2">For use on building construction projects where the value is $1 million (including GST) or more.</p>
+                                    <a href="https://www.forgov.qld.gov.au/__data/assets/word_doc/0033/493746/as2124-tender-requirements.docx" class="btn btn-outline-primary btn-sm btn-block" target="_blank"><i class="fas fa-download"></i> Download .docx</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title font-weight-bold">Tender Form</h5>
+                                    <p class="card-text small text-muted mt-2">For use on building construction projects where the value is $1 million (including GST) or more.</p>
+                                    <a href="https://www.forgov.qld.gov.au/__data/assets/word_doc/0029/340688/as2124-tender-form.docx" class="btn btn-outline-primary btn-sm btn-block" target="_blank"><i class="fas fa-download"></i> Download .docx</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title font-weight-bold">Special Conditions of Contract</h5>
+                                    <p class="card-text small text-muted mt-2">For use on building construction projects where the value is $1 million (including GST) or more.</p>
+                                    <a href="https://www.forgov.qld.gov.au/__data/assets/word_doc/0028/340687/as2124-special-conditions-contract.docx" class="btn btn-outline-primary btn-sm btn-block" target="_blank"><i class="fas fa-download"></i> Download .docx</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                     <!-- Shortform Contracts -->
+                    <h4 class="mb-3 text-secondary"><i class="fas fa-folder-open"></i> Short Form Consultancy Service Contract</h4>
+                    <div class="row mb-4">
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title font-weight-bold">Offer Requirements</h5>
+                                     <p class="card-text small text-muted mt-2">For use to engage building industry consultants... value less than $60,000 (including GST).</p>
+                                    <a href="https://www.forgov.qld.gov.au/__data/assets/word_doc/0028/493930/short-form-offer-requirements.docx" class="btn btn-outline-primary btn-sm btn-block" target="_blank"><i class="fas fa-download"></i> Download .docx</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title font-weight-bold">Offer Form</h5>
+                                    <p class="card-text small text-muted mt-2">For use to engage building industry consultants... value less than $60,000 (including GST).</p>
+                                    <a href="https://www.forgov.qld.gov.au/__data/assets/word_doc/0017/340712/short-form-offer-form.docx" class="btn btn-outline-primary btn-sm btn-block" target="_blank"><i class="fas fa-download"></i> Download .docx</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title font-weight-bold">Conditions of Contract</h5>
+                                    <p class="card-text small text-muted mt-2">For use to engage building industry consultants... value less than $60,000 (including GST).</p>
+                                    <a href="https://www.forgov.qld.gov.au/__data/assets/word_doc/0015/340710/short-form-contract.docx" class="btn btn-outline-primary btn-sm btn-block" target="_blank"><i class="fas fa-download"></i> Download .docx</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+        }
+        else
+        {
+            <div class="content-wrapper">
+                <div class="content">
+                    <div class="alert alert-danger">
+                        <h5><i class="icon fas fa-ban"></i> Access Denied</h5>
+                        You do not have permission to view this page.
+                    </div>
+                </div>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+         <div class="text-center mt-5">
+            <h3>Please log in.</h3>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private bool canView = false;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+             // Permission check placeholder (assumed authorised via sidebar logic for now)
+             canView = true; 
+        }
+    }
+}

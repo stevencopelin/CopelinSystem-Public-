@@ -1,0 +1,138 @@
+@page "/debug/permissions"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject PermissionService PermissionService
+@using System.Security.Claims
+@inject AuthenticationStateProvider AuthStateProvider
+
+<h3>Permission Debug - RELOAD TEST</h3>
+
+<div class="card">
+    <div class="card-body">
+        <h5>Current User Info</h5>
+        <p><strong>Authenticated:</strong> @isAuthenticated</p>
+        <p><strong>Role Claim Value:</strong> @roleClaimValue</p>
+        <p><strong>Parsed Role:</strong> @parsedRole</p>
+        <p><strong>User ID:</strong> @userId</p>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-body">
+        <h5>Permission Check Results</h5>
+        <p><strong>Has ManageTaskDurations Permission:</strong> @hasPermission</p>
+        <p><strong>Has ManageExternalRegion Permission:</strong> <span class="@(hasRegionPermission ? "text-success" : "text-danger")">@hasRegionPermission</span></p>
+        <p><strong>Permission Check Error:</strong> @permissionError</p>
+        <button class="btn btn-warning mt-2" @onclick="SeedPermissions">Force Seed Permissions</button>
+        @if (!string.IsNullOrEmpty(seedMessage))
+        {
+            <div class="alert alert-info mt-2">@seedMessage</div>
+        }
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-body">
+        <h5>All Permissions for Role</h5>
+        @if (rolePermissions != null)
+        {
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Permission Name</th>
+                        <th>Is Granted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var perm in rolePermissions)
+                    {
+                        <tr>
+                            <td>@perm.PermissionName</td>
+                            <td>@perm.IsGranted</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private bool isAuthenticated = false;
+    private string roleClaimValue = "None";
+    private string parsedRole = "None";
+    private string userId = "None";
+    private bool hasPermission = false;
+    private bool hasRegionPermission = false;
+    private string permissionError = "None";
+    private string seedMessage = "";
+    private List<PermissionWithStatus>? rolePermissions = null;
+
+    private async Task SeedPermissions()
+    {
+        try
+        {
+            seedMessage = "Seeding permissions...";
+            await PermissionService.EnsureExternalRegionPermission();
+            seedMessage = "Seeding completed. Refreshing data...";
+            
+            // Reload data
+            await OnInitializedAsync();
+             seedMessage = "Permissions seeded and data refreshed.";
+        }
+        catch (Exception ex)
+        {
+            seedMessage = "Error seeding: " + ex.Message;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            isAuthenticated = user.Identity?.IsAuthenticated ?? false;
+
+            if (isAuthenticated)
+            {
+                var roleClaim = user.FindFirst(ClaimTypes.Role);
+                if (roleClaim != null)
+                {
+                    roleClaimValue = roleClaim.Value;
+                    
+                    if (Enum.TryParse<UserRole>(roleClaim.Value.Replace(" ", ""), out var role))
+                    {
+                        parsedRole = role.ToString();
+                        
+                        try
+                        {
+                            hasPermission = await PermissionService.HasPermission(role, "ManageTaskDurations");
+                            hasRegionPermission = await PermissionService.HasPermission(role, "ManageExternalRegion");
+                            rolePermissions = await PermissionService.GetRolePermissions(role);
+                        }
+                        catch (Exception ex)
+                        {
+                            permissionError = ex.Message;
+                        }
+                    }
+                    else
+                    {
+                        parsedRole = "Failed to parse: " + roleClaim.Value;
+                    }
+                }
+
+                var userIdClaim = user.FindFirst("UserId");
+                if (userIdClaim != null)
+                {
+                    userId = userIdClaim.Value;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            permissionError = "General error: " + ex.Message;
+        }
+    }
+}

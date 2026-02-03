@@ -1,0 +1,21 @@
+@page "/logout"
+@using CopelinSystem.Services
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<p>Logging out...</p>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthStateProvider is CopelinAuthStateProvider auth)
+        {
+            auth.Logout();
+        }
+        
+        // Brief delay to ensure state update propagates? Usually not needed strictly but good for UI feel
+        // await Task.Delay(100);
+
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}

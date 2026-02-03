@@ -1,0 +1,397 @@
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject FileSystemService FileService
+
+<div class="file-tree">
+    @if (IsLoading)
+    {
+        <div class="text-center p-2"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+    }
+    else
+    {
+        <ul class="tree-root">
+            @foreach (var region in Regions)
+            {
+                <li class="tree-node">
+                    <div class="node-content @(SelectedRegion == region ? "selected" : "")" 
+                         @onclick="() => SelectRegion(region)">
+                        <span class="expand-icon" @onclick="() => ToggleRegion(region)" @onclick:stopPropagation="true">
+                            <i class="fas @(ExpandedRegions.Contains(region) ? "fa-caret-down" : "fa-caret-right")"></i>
+                        </span>
+                        <i class="fas fa-globe text-primary mr-1"></i>
+                        <span class="node-text">@region</span>
+                    </div>
+
+                    @if (ExpandedRegions.Contains(region))
+                    {
+                         <ul class="tree-children">
+                            @if (ProjectsByRegion.ContainsKey(region))
+                            {
+                                var projects = ProjectsByRegion[region];
+                                // Group by FY first (Newest first)
+                                var fyGroups = projects
+                                    .GroupBy(p => FileService.GetFinancialYear(p.ProjectDateCreated))
+                                    .OrderByDescending(g => g.Key);
+
+                                @foreach (var fyGroup in fyGroups)
+                                {
+                                    var fy = fyGroup.Key;
+                                    var uniqueFyKey = $"{region}|{fy}"; // Key: Region|FY
+
+                                    <li class="tree-node">
+                                        <div class="node-content @(SelectedFinancialYear == fy && SelectedRegion == region ? "selected" : "")" 
+                                             @onclick="() => SelectFinancialYear(region, fy)">
+                                            <span class="expand-icon" @onclick="() => ToggleFinancialYear(uniqueFyKey)" @onclick:stopPropagation="true">
+                                                <i class="fas @(ExpandedFinancialYears.Contains(uniqueFyKey) ? "fa-caret-down" : "fa-caret-right")"></i>
+                                            </span>
+                                            <i class="fas fa-calendar-alt text-muted mr-1"></i>
+                                            <span class="node-text">@fy</span>
+                                        </div>
+
+                                        @if (ExpandedFinancialYears.Contains(uniqueFyKey))
+                                        {
+                                            <ul class="tree-children">
+                                                @{
+                                                    var locations = fyGroup
+                                                        .GroupBy(p => string.IsNullOrEmpty(p.ProjectLocation) ? "Unassigned Location" : p.ProjectLocation)
+                                                        .OrderBy(g => g.Key);
+                                                }
+
+                                                @foreach (var locationGroup in locations)
+                                                {
+                                                    var locationName = locationGroup.Key;
+                                                    var uniqueLocKey = $"{uniqueFyKey}|{locationName}"; // Key: Region|FY|Location
+
+                                                    <li class="tree-node">
+                                                        <div class="node-content @(SelectedLocation == locationName && SelectedFinancialYear == fy && SelectedRegion == region ? "selected" : "")"
+                                                             @onclick="() => SelectLocation(region, fy, locationName)">
+                                                            
+                                                            <span class="expand-icon" @onclick="() => ToggleLocation(uniqueLocKey)" @onclick:stopPropagation="true">
+                                                                <i class="fas @(ExpandedLocations.Contains(uniqueLocKey) ? "fa-caret-down" : "fa-caret-right")"></i>
+                                                            </span>
+                                                            <i class="fas fa-map-marker-alt text-secondary mr-1"></i>
+                                                            <span class="node-text">@locationName</span>
+                                                        </div>
+                                                        
+                                                        @if (ExpandedLocations.Contains(uniqueLocKey))
+                                                        {
+                                                            <ul class="tree-children">
+                                                                @foreach (var project in locationGroup.OrderBy(p => p.ProjectName))
+                                                                {
+                                                                    <li class="tree-node">
+                                                                        <div class="node-content @(SelectedProjectId == project.ProjectId ? "selected" : "")"
+                                                                             @onclick="() => SelectProject(project)"
+                                                                             @oncontextmenu="e => OnProjectContextMenu(e, project)" @oncontextmenu:preventDefault="true">
+                                                                             
+                                                                            <span class="expand-icon" @onclick="() => ToggleProject(project)" @onclick:stopPropagation="true">
+                                                                                <i class="fas @(ExpandedProjects.Contains(project.ProjectId) ? "fa-caret-down" : "fa-caret-right")"></i>
+                                                                            </span>
+                                                                            <i class="fas fa-building text-info mr-1"></i>
+                                                                            <span class="node-text">@project.ProjectName</span>
+                                                                        </div>
+
+                                                                        @if (ExpandedProjects.Contains(project.ProjectId))
+                                                                        {
+                                                                            <ul class="tree-children">
+                                                                                 @* Recursive render for folders *@
+                                                                                <FolderTree ProjectId="@project.ProjectId" 
+                                                                                            ParentId="null" 
+                                                                                            OnSelectFolder="@SelectFolder"
+                                                                                            SelectedFolderId="@SelectedFolderId"
+                                                                                            OnContextMenu="@OnFolderContextMenu"
+                                                                                            @ref="FolderTreeRefs[project.ProjectId]" />
+                                                                            </ul>
+                                                                        }
+                                                                    </li>
+                                                                }
+                                                            </ul>
+                                                        }
+                                                    </li>
+                                                }
+                                            </ul>
+                                        }
+                                    </li>
+                                }
+                            }
+                            else
+                            {
+                                <li class="ml-4 text-muted"><small>Loading projects...</small></li>
+                            }
+                        </ul>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+<style>
+    .file-tree {
+        overflow-y: auto;
+        height: 100%;
+    }
+    .tree-root, .tree-children {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+    }
+    .tree-children {
+        padding-left: 15px;
+        border-left: 1px solid #eee;
+        margin-left: 5px;
+    }
+    .node-content {
+        padding: 4px 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        border-radius: 3px;
+    }
+    .node-content:hover {
+        background-color: #f0f0f0;
+    }
+    .node-content.selected {
+        background-color: #e9ecef;
+        font-weight: 500;
+    }
+    .expand-icon {
+        width: 15px;
+        text-align: center;
+        margin-right: 5px;
+        color: #666;
+        cursor: pointer;
+    }
+    .node-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+
+@code {
+    [Parameter] public User CurrentUser { get; set; } = new();
+    [Parameter] public int? InitialProjectId { get; set; }
+    [Parameter] public EventCallback<SelectionEventArgs> OnSelectionChanged { get; set; }
+    [Parameter] public EventCallback<ContextMenuEventArgs> OnContextMenu { get; set; }
+
+    private List<string> Regions = new();
+    private Dictionary<string, List<ProjectList>> ProjectsByRegion = new();
+    private HashSet<string> ExpandedRegions = new();
+    private HashSet<string> ExpandedLocations = new();
+    private HashSet<string> ExpandedFinancialYears = new();
+    private HashSet<int> ExpandedProjects = new();
+    
+    private string? SelectedRegion;
+    private string? SelectedLocation;
+    private string? SelectedFinancialYear;
+    private int? SelectedProjectId;
+    private int? SelectedFolderId;
+
+    private Dictionary<int, FolderTree> FolderTreeRefs = new();
+
+    private bool IsLoading = true;
+    private bool hasDeepLinked = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRegions();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Reload regions when user changes (e.g. from default new User() to actual logged in user)
+        if (CurrentUser != null && CurrentUser.UserId != 0)
+        {
+             await LoadRegions();
+             
+             // Handle Deep Link
+             if (InitialProjectId.HasValue && !hasDeepLinked)
+             {
+                 await HandleDeepLink(InitialProjectId.Value);
+             }
+        }
+    }
+    
+    private async Task HandleDeepLink(int projectId)
+    {
+        // New Hierarchy: Region -> FY -> Location -> Project
+        
+        var project = await FileService.GetProjectById(projectId);
+        if (project != null && Regions.Contains(project.ProjectRegion ?? ""))
+        {
+            var region = project.ProjectRegion ?? "Unassigned";
+            var location = project.ProjectLocation ?? "Unassigned Location";
+            var fy = FileService.GetFinancialYear(project.ProjectDateCreated);
+
+            // 1. Expand Region
+            if (!ExpandedRegions.Contains(region)) ExpandedRegions.Add(region);
+            if (!ProjectsByRegion.ContainsKey(region))
+            {
+                ProjectsByRegion[region] = await FileService.GetProjectsInRegion(region, CurrentUser);
+            }
+            
+            // 2. Expand FY (Key: Region|FY)
+            var fyKey = $"{region}|{fy}";
+            if (!ExpandedFinancialYears.Contains(fyKey)) ExpandedFinancialYears.Add(fyKey);
+            
+            // 3. Expand Location (Key: Region|FY|Location)
+            var locKey = $"{fyKey}|{location}";
+            if (!ExpandedLocations.Contains(locKey)) ExpandedLocations.Add(locKey);
+            
+            // 4. Select and Expand Project
+            if (!ExpandedProjects.Contains(projectId)) ExpandedProjects.Add(projectId);
+            
+            SelectProject(project);
+            hasDeepLinked = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadRegions()
+    {
+        IsLoading = true;
+        Regions = await FileService.GetAuthorizedRegions(CurrentUser);
+        IsLoading = false;
+    }
+
+    private async Task ToggleRegion(string region)
+    {
+        if (ExpandedRegions.Contains(region))
+        {
+            ExpandedRegions.Remove(region);
+        }
+        else
+        {
+            ExpandedRegions.Add(region);
+            if (!ProjectsByRegion.ContainsKey(region))
+            {
+                ProjectsByRegion[region] = await FileService.GetProjectsInRegion(region, CurrentUser);
+            }
+        }
+    }
+    
+    private void SelectRegion(string region) 
+    {
+        SelectedRegion = region;
+        SelectedFinancialYear = null;
+        SelectedLocation = null;
+        SelectedProjectId = null;
+        SelectedFolderId = null;
+        OnSelectionChanged.InvokeAsync(new SelectionEventArgs { Type = SelectionType.Region, Region = region });
+    }
+
+    private void ToggleFinancialYear(string uniqueFyKey)
+    {
+        if (ExpandedFinancialYears.Contains(uniqueFyKey))
+        {
+            ExpandedFinancialYears.Remove(uniqueFyKey);
+        }
+        else
+        {
+            ExpandedFinancialYears.Add(uniqueFyKey);
+        }
+    }
+
+    private void SelectFinancialYear(string region, string fy)
+    {
+        SelectedRegion = region;
+        SelectedFinancialYear = fy;
+        SelectedLocation = null;
+        SelectedProjectId = null;
+        SelectedFolderId = null;
+
+        OnSelectionChanged.InvokeAsync(new SelectionEventArgs 
+        { 
+            Type = SelectionType.FinancialYear, 
+            Region = region,
+            FinancialYear = fy
+            // Location is null here
+        });
+    }
+
+    private void ToggleLocation(string uniqueLocKey)
+    {
+        if (ExpandedLocations.Contains(uniqueLocKey))
+        {
+            ExpandedLocations.Remove(uniqueLocKey);
+        }
+        else
+        {
+            ExpandedLocations.Add(uniqueLocKey);
+        }
+    }
+
+    private void SelectLocation(string region, string fy, string location)
+    {
+        SelectedRegion = region;
+        SelectedFinancialYear = fy;
+        SelectedLocation = location;
+        SelectedProjectId = null;
+        SelectedFolderId = null;
+        
+        OnSelectionChanged.InvokeAsync(new SelectionEventArgs 
+        { 
+            Type = SelectionType.Location, 
+            Region = region,
+            FinancialYear = fy,
+            Location = location
+        });
+    }
+
+    private async Task ToggleProject(ProjectList project)
+    {
+        if (ExpandedProjects.Contains(project.ProjectId))
+        {
+            ExpandedProjects.Remove(project.ProjectId);
+        }
+        else
+        {
+            ExpandedProjects.Add(project.ProjectId);
+        }
+    }
+
+    private void SelectProject(ProjectList project)
+    {
+        SelectedRegion = project.ProjectRegion;
+        SelectedFinancialYear = FileService.GetFinancialYear(project.ProjectDateCreated);
+        SelectedLocation = project.ProjectLocation;
+        SelectedProjectId = project.ProjectId;
+        SelectedFolderId = null;
+        OnSelectionChanged.InvokeAsync(new SelectionEventArgs { Type = SelectionType.Project, Project = project });
+    }
+
+    private void SelectFolder(FileSystemItem folder)
+    {
+        SelectedFolderId = folder.Id;
+        SelectedProjectId = folder.ProjectId;
+        // Find region if needed, but UI state should handle it
+        OnSelectionChanged.InvokeAsync(new SelectionEventArgs { Type = SelectionType.Folder, Folder = folder });
+    }
+
+    private void OnProjectContextMenu(MouseEventArgs e, ProjectList project)
+    {
+        SelectProject(project);
+        OnContextMenu.InvokeAsync(new ContextMenuEventArgs 
+        { 
+            Type = SelectionType.Project, 
+            Project = project, 
+            X = e.ClientX, 
+            Y = e.ClientY 
+        });
+    }
+
+    private void OnFolderContextMenu(ContextMenuEventArgs args)
+    {
+        // Re-bubble
+        OnContextMenu.InvokeAsync(args);
+    }
+    
+    public async Task RefreshFolder(int projectId)
+    {
+       if (FolderTreeRefs.ContainsKey(projectId))
+       {
+           await FolderTreeRefs[projectId].Refresh();
+           StateHasChanged();
+       }
+    }
+}

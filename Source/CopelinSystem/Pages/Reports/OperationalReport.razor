@@ -1,0 +1,187 @@
+@page "/reports/operational"
+@using CopelinSystem.Services
+@using CopelinSystem.Models
+@inject ReportingService ReportingService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<AuthorizeView>
+    <Authorized>
+        <div class="content-header">
+            <div class="container-fluid">
+                <div class="row mb-2">
+                    <div class="col-sm-6">
+                        <h1 class="m-0">Operational Report</h1>
+                    </div>
+                    <div class="col-sm-6">
+                        <ol class="breadcrumb float-sm-right">
+                            <li class="breadcrumb-item"><a href="/">Home</a></li>
+                            <li class="breadcrumb-item"><a href="/reports">Reports</a></li>
+                            <li class="breadcrumb-item active">Operational</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <section class="content">
+            <div class="container-fluid">
+                @if (isLoading)
+                {
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="sr-only">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else if (!isAuthorized)
+                {
+                     <div class="text-center mt-5">
+                        <h3>Access Denied</h3>
+                        <p>You do not have the required permissions ('View Reports') to view this report.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="row">
+                        <!-- Client Activity -->
+                        <div class="col-md-6">
+                            <div class="card card-outline card-danger">
+                                <div class="card-header">
+                                    <h3 class="card-title">Top Active Clients (Project Count)</h3>
+                                </div>
+                                <div class="card-body p-0">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 10px">#</th>
+                                                <th>Client</th>
+                                                <th class="text-right">Active Projects</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @for (int i = 0; i < clientActivity.Count; i++)
+                                            {
+                                                var c = clientActivity[i];
+                                                <tr>
+                                                    <td>@(i + 1).</td>
+                                                    <td>@c.ClientName</td>
+                                                    <td class="text-right">
+                                                        <span class="badge badge-info right">@c.ActiveProjectCount</span>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Staff Workload -->
+                        <div class="col-md-6">
+                            <div class="card card-outline card-warning">
+                                <div class="card-header">
+                                    <h3 class="card-title">Staff Workload (Active Projects)</h3>
+                                </div>
+                                <div class="card-body p-0">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Staff Member</th>
+                                                <th class="text-right">Assigned Projects</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var s in staffWorkload)
+                                            {
+                                                <tr>
+                                                    <td>@s.UserName</td>
+                                                    <td class="text-right">
+                                                        @if (s.ActiveProjectCount > 10)
+                                                        {
+                                                            <span class="badge badge-danger">@s.ActiveProjectCount</span>
+                                                        }
+                                                        else if (s.ActiveProjectCount > 5)
+                                                        {
+                                                            <span class="badge badge-warning">@s.ActiveProjectCount</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge badge-success">@s.ActiveProjectCount</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    </Authorized>
+    <NotAuthorized>
+         <div class="text-center mt-5">
+            <h3>Access Denied</h3>
+            <p>You do not have permission to view reports.</p>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+@inject PermissionService PermissionService
+@inject AuthenticationService AuthService
+
+    private bool isLoading = true;
+    private bool isAuthorized = false;
+    
+    // Data
+    private List<(string ClientName, int ActiveProjectCount)> clientActivity = new();
+    private List<(string UserName, int ActiveProjectCount)> staffWorkload = new();
+    private string? regionFilter = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var appUser = await AuthService.GetUserFromPrincipal(user); 
+
+        if (appUser != null)
+        {
+             isAuthorized = await PermissionService.UserHasPermission(appUser, "ViewReports");
+             if (isAuthorized)
+             {
+                 if (appUser.Role != UserRole.Admin)
+                 {
+                     regionFilter = appUser.Region;
+                 }
+                 await LoadData();
+             }
+             else 
+             {
+                 isLoading = false;
+             }
+        }
+        else
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadData()
+    {
+        try {
+            // 1. Client Activity
+            clientActivity = await ReportingService.GetActiveClientsWithProjectCounts(15, regionFilter);
+
+            // 2. Staff Workload
+            staffWorkload = await ReportingService.GetUserWorkload(15, regionFilter);
+        } 
+        finally 
+        {
+            isLoading = false;
+        }
+    }
+}

@@ -1,0 +1,358 @@
+@page "/admin/iso-forms/edit/{TemplateId:int}"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject ChecklistService ChecklistService
+@inject NavigationManager Navigation
+
+<section class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-sm-6">
+                <h1>Edit Template</h1>
+            </div>
+            <div class="col-sm-6">
+                <button class="btn btn-success float-right" @onclick="SaveTemplate">
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="content">
+    <div class="container-fluid">
+        @if (template == null)
+        {
+             <div class="d-flex justify-content-center">
+                <div class="spinner-border" role="status">
+                    <span class="sr-only">Loading...</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="row">
+                <div class="col-md-12">
+                    <!-- Template Details -->
+                    <div class="card card-primary collapsed-card">
+                        <div class="card-header">
+                            <h3 class="card-title">Template Details</h3>
+                            <div class="card-tools">
+                                <button type="button" class="btn btn-tool" data-card-widget="collapse"><i class="fas fa-plus"></i></button>
+                            </div>
+                        </div>
+                        <div class="card-body" style="display: none;">
+                            <div class="form-group">
+                                <label>Name</label>
+                                <input type="text" class="form-control" @bind="template.Name" />
+                            </div>
+                            <div class="form-group">
+                                <label>Description</label>
+                                <textarea class="form-control" @bind="template.Description"></textarea>
+                            </div>
+                            <div class="row">
+                                <div class="col-sm-6">
+                                    <div class="form-group">
+                                        <label>Category</label>
+                                        <input type="text" class="form-control" @bind="template.Category" />
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="form-group">
+                                        <label>Version</label>
+                                        <input type="text" class="form-control" @bind="template.Version" />
+                                    </div>
+                                </div>
+                            </div>
+                             <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="isActive" @bind="template.IsActive">
+                                <label class="form-check-label" for="isActive">Active</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sections & Questions -->
+                    @foreach (var templateSection in template.Sections.OrderBy(s => s.DisplayOrder))
+                    {
+                        <div class="card card-outline card-secondary mb-3 shadow-none border">
+                            <div class="card-header d-flex justify-content-between align-items-center bg-light">
+                                <div class="input-group input-group-sm" style="max-width: 50%;">
+                                    <input type="text" 
+                                           class="form-control form-control-border font-weight-bold" 
+                                           style="font-size: 1.1rem; background-color: transparent;" 
+                                           @bind="templateSection.SectionName" 
+                                           placeholder="Section Name" />
+                                </div>
+                                <div class="card-tools ml-auto">
+                                    <button class="btn btn-tool" title="Move Up" @onclick="() => MoveSection(templateSection, -1)"><i class="fas fa-chevron-up"></i></button>
+                                    <button class="btn btn-tool" title="Move Down" @onclick="() => MoveSection(templateSection, 1)"><i class="fas fa-chevron-down"></i></button>
+                                    <button class="btn btn-tool text-danger" title="Delete Section" @onclick="() => DeleteSection(templateSection)"><i class="fas fa-trash-alt"></i></button>
+                                </div>
+                            </div>
+                            <div class="card-body p-3">
+                                <input type="text" class="form-control form-control-sm mb-3 border-0 bg-light" @bind="templateSection.Description" placeholder="Description (Optional)" />
+                                
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover text-nowrap align-middle">
+                                        <thead>
+                                            <tr class="text-muted text-uppercase" style="font-size: 0.85rem;">
+                                                <th style="width: 50%">Question</th>
+                                                <th style="width: 20%">Type</th>
+                                                <th style="width: 10%" class="text-center">Required</th>
+                                                <th style="width: 20%" class="text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var question in templateSection.Questions.OrderBy(q => q.DisplayOrder))
+                                            {
+                                                <tr>
+                                                    <td class="align-middle">
+                                                        <input type="text" class="form-control form-control-sm font-weight-bold" @bind="question.QuestionText" placeholder="Question Text" />
+                                                        <input type="text" class="form-control form-control-sm mt-1 text-muted border-0 pl-0" style="font-size: 0.85rem;" @bind="question.HelpText" placeholder="Help text (optional)..." />
+                                                    </td>
+                                                    <td class="align-middle">
+                                                        <select class="form-control form-control-sm" @bind="question.QuestionType">
+                                                            <option value="Text">Short Text</option>
+                                                            <option value="TextArea">Long Text</option>
+                                                            <option value="YesNo">Yes / No / NA</option>
+                                                            <option value="Date">Date</option>
+                                                        <option value="Checkbox">Checkbox (Confirm)</option>
+                                                            <option value="MultiSelect">Multiple Selection Box</option>
+                                                        </select>
+
+                                                        @if (question.QuestionType == "MultiSelect" || question.QuestionType == "Radio" || question.QuestionType == "Dropdown")
+                                                        {
+                                                            <div class="mt-2 p-2 border rounded bg-light">
+                                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                                    <label class="small text-muted mb-0">Options</label>
+                                                                    <button class="btn btn-xs btn-outline-primary" @onclick="() => AddOption(question)"><i class="fas fa-plus"></i> Add Option</button>
+                                                                </div>
+                                                                @foreach (var opt in question.Options.OrderBy(o => o.DisplayOrder))
+                                                                {
+                                                                    <div class="input-group input-group-sm mb-1">
+                                                                        <input type="text" class="form-control" @bind="opt.OptionText" placeholder="Option Text" />
+                                                                        <div class="input-group-append">
+                                                                            <button class="btn btn-outline-secondary" @onclick="() => MoveOption(question, opt, -1)"><i class="fas fa-arrow-up"></i></button>
+                                                                            <button class="btn btn-outline-secondary" @onclick="() => MoveOption(question, opt, 1)"><i class="fas fa-arrow-down"></i></button>
+                                                                            <button class="btn btn-outline-danger" @onclick="() => DeleteOption(question, opt)"><i class="fas fa-trash"></i></button>
+                                                                        </div>
+                                                                    </div>
+                                                                }
+                                                            </div>
+                                                        }
+                                                    </td>
+                                                    <td class="text-center align-middle">
+                                                        <div class="custom-control custom-switch">
+                                                            <input type="checkbox" class="custom-control-input" id="req_@question.QuestionId" @bind="question.IsRequired">
+                                                            <label class="custom-control-label" for="req_@question.QuestionId"></label>
+                                                        </div>
+                                                    </td>
+                                                    <td class="text-right align-middle">
+                                                        <div class="btn-group">
+                                                            <button class="btn btn-sm btn-default" title="Move Up" @onclick="() => MoveQuestion(templateSection, question, -1)"><i class="fas fa-arrow-up"></i></button>
+                                                            <button class="btn btn-sm btn-default" title="Move Down" @onclick="() => MoveQuestion(templateSection, question, 1)"><i class="fas fa-arrow-down"></i></button>
+                                                            <button class="btn btn-sm btn-danger" title="Delete Question" @onclick="() => DeleteQuestion(templateSection, question)"><i class="fas fa-trash"></i></button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary mt-2" @onclick="() => AddQuestion(templateSection)">
+                                    <i class="fas fa-plus"></i> Add Question
+                                </button>
+                            </div>
+                        </div>
+                    }
+
+                    <button class="btn btn-info mb-4" @onclick="AddSection">
+                        <i class="fas fa-plus"></i> Add Section
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter] public int TemplateId { get; set; }
+
+    private ChecklistTemplate? template;
+
+    protected override async Task OnInitializedAsync()
+    {
+        template = await ChecklistService.GetTemplateByIdAsync(TemplateId);
+    }
+
+    private void AddSection()
+    {
+        if (template == null) return;
+        
+        var newSection = new ChecklistSection
+        {
+            SectionName = "New Section",
+            TemplateId = template.TemplateId,
+            DisplayOrder = template.Sections.Count + 1
+        };
+        template.Sections.Add(newSection);
+    }
+
+    private async Task DeleteSection(ChecklistSection section)
+    {
+        template?.Sections.Remove(section);
+        // If it's an existing section (ID > 0), we should probably mark it for deletion or handle it in service.
+        // For simplicity, UpdateTemplateAsync handles the graph or we rely on orphan deletion if configured, 
+        // or we just remove it here and the Context update will figure it out (or throw if restricted).
+        // Since we are using short-lived context in service, "removing from list" and calling Update might not delete it from DB 
+        // unless we explicitly manage state.
+        // Ideally, we'd call ChecklistService.DeleteSectionAsync(section.SectionId) instantly if it's saved.
+        if (section.SectionId > 0)
+        {
+            await ChecklistService.DeleteSectionAsync(section.SectionId); // Fire and forget for now, or await
+        }
+    }
+    
+    // Move Section Logic
+    private void MoveSection(ChecklistSection section, int direction)
+    {
+        if (template == null) return;
+        var list = template.Sections.OrderBy(s => s.DisplayOrder).ToList();
+        var index = list.IndexOf(section);
+        
+        if (direction == -1 && index > 0)
+        {
+            list.RemoveAt(index);
+            list.Insert(index - 1, section);
+        }
+        else if (direction == 1 && index < list.Count - 1)
+        {
+            list.RemoveAt(index);
+            list.Insert(index + 1, section);
+        }
+        
+        // Renumber
+        for(int i=0; i < list.Count; i++)
+        {
+            list[i].DisplayOrder = i + 1;
+        }
+    }
+
+    private void AddQuestion(ChecklistSection section)
+    {
+        var newQ = new ChecklistQuestion
+        {
+            QuestionText = "New Question",
+            QuestionType = "Text",
+            SectionId = section.SectionId,
+            // Ensure next order is safely at end
+            DisplayOrder = (section.Questions.Max(q => (int?)q.DisplayOrder) ?? 0) + 1
+        };
+        section.Questions.Add(newQ);
+    }
+
+    private async Task DeleteQuestion(ChecklistSection section, ChecklistQuestion question)
+    {
+        section.Questions.Remove(question);
+        if (question.QuestionId > 0)
+        {
+             await ChecklistService.DeleteQuestionAsync(question.QuestionId);
+        }
+    }
+    
+     private void MoveQuestion(ChecklistSection section, ChecklistQuestion question, int direction)
+    {
+        var list = section.Questions.OrderBy(q => q.DisplayOrder).ToList();
+        var index = list.IndexOf(question);
+        
+        if (direction == -1 && index > 0)
+        {
+            list.RemoveAt(index);
+            list.Insert(index - 1, question);
+        }
+        else if (direction == 1 && index < list.Count - 1)
+        {
+            list.RemoveAt(index);
+            list.Insert(index + 1, question);
+        }
+
+        // Renumber
+        for(int i=0; i < list.Count; i++)
+        {
+            list[i].DisplayOrder = i + 1;
+        }
+    }
+
+    // Option Management
+    private void AddOption(ChecklistQuestion question)
+    {
+        var newOpt = new ChecklistQuestionOption
+        {
+            OptionText = "New Option",
+            QuestionId = question.QuestionId,
+            DisplayOrder = (question.Options.Max(o => (int?)o.DisplayOrder) ?? 0) + 1
+        };
+        question.Options.Add(newOpt);
+    }
+
+    private async Task DeleteOption(ChecklistQuestion question, ChecklistQuestionOption option)
+    {
+        question.Options.Remove(option);
+        if (option.OptionId > 0)
+        {
+            await ChecklistService.DeleteQuestionOptionAsync(option.OptionId);
+        }
+    }
+
+    private void MoveOption(ChecklistQuestion question, ChecklistQuestionOption option, int direction)
+    {
+        var list = question.Options.OrderBy(o => o.DisplayOrder).ToList();
+        var index = list.IndexOf(option);
+        
+        if (direction == -1 && index > 0)
+        {
+            list.RemoveAt(index);
+            list.Insert(index - 1, option);
+        }
+        else if (direction == 1 && index < list.Count - 1)
+        {
+            list.RemoveAt(index);
+            list.Insert(index + 1, option);
+        }
+
+        // Renumber locally
+        for(int i=0; i < list.Count; i++)
+        {
+            list[i].DisplayOrder = i + 1;
+        }
+    }
+
+    private async Task SaveTemplate()
+    {
+        if (template != null)
+        {
+            // Renumber orders just in case
+            int sIdx = 1;
+            foreach(var s in template.Sections.OrderBy(x => x.DisplayOrder))
+            {
+                s.DisplayOrder = sIdx++;
+                int qIdx = 1;
+                foreach(var q in s.Questions.OrderBy(x => x.DisplayOrder))
+                {
+                    q.DisplayOrder = qIdx++;
+                    
+                    int oIdx = 1;
+                    foreach(var o in q.Options.OrderBy(x => x.DisplayOrder))
+                    {
+                        o.DisplayOrder = oIdx++;
+                    }
+                }
+            }
+            
+            await ChecklistService.UpdateTemplateAsync(template);
+            
+            // Reload to ensure IDs are set (if not handled by EF tracking in same context, but we use factory)
+             template = await ChecklistService.GetTemplateByIdAsync(TemplateId);
+        }
+    }
+}

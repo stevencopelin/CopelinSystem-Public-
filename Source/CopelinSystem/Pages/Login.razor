@@ -1,0 +1,148 @@
+@page "/login"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@using CopelinSystem.Layout
+@using Microsoft.AspNetCore.Hosting
+@layout LoginLayout
+@rendermode InteractiveServer
+@inject AuthenticationService AuthService
+@inject EmployeeService EmployeeService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IWebHostEnvironment Environment
+
+<PageTitle>Development Login</PageTitle>
+
+<div class="container mt-5">
+    @if (Environment.IsDevelopment())
+    {
+        <div class="row mb-4">
+            <div class="col-12 text-center">
+                <h1 class="display-4 text-primary">Development Login</h1>
+                <p class="lead">Select a user to simulate login (Development Environment Only)</p>
+            </div>
+        </div>
+
+        @if (employeesWithRoles == null)
+        {
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="row">
+                <!-- Admin Card -->
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 shadow-sm hover-card border-danger" @onclick="LoginAsAdmin" style="cursor: pointer; transition: transform 0.2s;">
+                        <div class="card-body text-center">
+                            <div class="mb-3">
+                                <div class="rounded-circle bg-danger text-white d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px; font-size: 2rem;">
+                                    A
+                                </div>
+                            </div>
+                            <h5 class="card-title">System Admin</h5>
+                            <p class="card-text text-danger">Administrator</p>
+                            <p class="card-text"><small class="text-muted">admin@copelin.com</small></p>
+                            <button class="btn btn-outline-danger btn-sm mt-2">Login as Admin</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Employee Cards -->
+                @foreach (var item in employeesWithRoles)
+                {
+                    <div class="col-md-4 mb-4">
+                        <div class="card h-100 shadow-sm hover-card" @onclick="() => LoginAsEmployee(item.Employee, item.Roles)" style="cursor: pointer; transition: transform 0.2s;">
+                            <div class="card-body text-center">
+                                <div class="mb-3">
+                                    <div class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px; font-size: 2rem;">
+                                        @item.Employee.FullName.Substring(0, 1)
+                                    </div>
+                                </div>
+                                <h5 class="card-title">@item.Employee.FullName</h5>
+                                <p class="card-text text-muted">
+                                    <strong>Roles:</strong>
+                                    @if (item.Roles.Any())
+                                    {
+                                        @string.Join(", ", item.Roles)
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted font-italic">No Roles</span>
+                                    }
+                                </p>
+                                <p class="card-text"><small class="text-info">System Access: @GetMappedRole(item.Employee)</small></p>
+                                <p class="card-text"><small class="text-muted">@(item.Employee.Region?.RegionName ?? "No Region")</small></p>
+                                <button class="btn btn-outline-primary btn-sm mt-2">Login as @item.Employee.FullName</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+    else
+    {
+        <div class="alert alert-danger">
+            This page is only available in Development environment.
+        </div>
+    }
+</div>
+
+<style>
+    .hover-card:hover {
+        transform: translateY(-5px);
+        border-color: #0d6efd;
+    }
+</style>
+
+@code {
+    private List<(Employee Employee, List<string> Roles)>? employeesWithRoles;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Environment.IsDevelopment())
+        {
+            employeesWithRoles = await EmployeeService.GetAllEmployeesWithRoles();
+        }
+    }
+
+    private async Task LoginAsAdmin()
+    {
+        var adminUser = await AuthService.EnsureAdminUserExists();
+        LoginUser(adminUser);
+    }
+
+    private UserRole GetMappedRole(Employee employee)
+    {
+        if (employee.EmployeeRoles.Any(r => r.RoleType == RoleType.Administrator)) return UserRole.Admin;
+        if (employee.EmployeeRoles.Any(r => r.RoleType == RoleType.PrincipalEstimator || r.RoleType == RoleType.PlanningManager)) return UserRole.PrincipalEstimator;
+        if (employee.EmployeeRoles.Any(r => r.RoleType == RoleType.SeniorEstimator)) return UserRole.Manager;
+        if (employee.EmployeeRoles.Any(r => r.RoleType == RoleType.Estimator || r.RoleType == RoleType.Supervisor)) return UserRole.Estimator;
+        return UserRole.ReadOnly;
+    }
+
+    private async Task LoginAsEmployee(Employee employee, List<string> roles)
+    {
+        // Map Employee Roles to UserRole for simulation
+        UserRole simulatedRole = GetMappedRole(employee);
+        
+        // Ensure a real User exists in DB for this employee
+        var user = await AuthService.EnsureUserForEmployee(employee, simulatedRole);
+
+        LoginUser(user);
+    }
+
+    private void LoginUser(User user)
+    {
+        if (AuthStateProvider is CopelinAuthStateProvider copelinAuth)
+        {
+            copelinAuth.SetDevUser(user);
+            Navigation.NavigateTo("/");
+        }
+    }
+}

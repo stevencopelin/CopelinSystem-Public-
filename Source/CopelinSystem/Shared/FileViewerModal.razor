@@ -1,0 +1,183 @@
+@using CopelinSystem.Models
+@using CopelinSystem.Pages.FileExplorer
+@using CopelinSystem.Services
+@inject IJSRuntime JSRuntime
+@inject FileSystemService FileService
+
+@if (ShowModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-xl modal-dialog-centered" role="document" style="height: 90vh;">
+            <div class="modal-content h-100 d-flex flex-column">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title text-truncate" title="@CurrentItem?.Name">
+                        <i class="fas @GetIcon(CurrentItem)"></i> @CurrentItem?.Name
+                    </h5>
+                    <div>
+                        <a href="@GetDownloadUrl()" target="_blank" class="btn btn-outline-primary btn-sm mr-2" download>
+                            <i class="fas fa-download"></i> Download
+                        </a>
+                        <button type="button" class="close" @onclick="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-body p-0 d-flex justify-content-center align-items-center bg-light flex-grow-1" style="overflow: auto; min-height: 0;">
+                   @if (CurrentItem != null)
+                   {
+                       var ext = System.IO.Path.GetExtension(CurrentItem.Name).ToLower();
+                       var url = GetViewUrl(); 
+
+                       @if (ext == ".pdf")
+                       {
+                           <iframe src="@url" style="width: 100%; height: 100%; border: none;"></iframe>
+                       }
+                       else if (new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" }.Contains(ext))
+                       {
+                           <img src="@url" style="max-width: 100%; max-height: 100%; object-fit: contain;" />
+                       }
+                       else if (new[] { ".txt", ".log", ".md", ".html", ".htm" }.Contains(ext))
+                       {
+                           <iframe src="@url" style="width: 100%; height: 100%; border: none; background: white;"></iframe>
+                       }
+                       else if (ext == ".docx")
+                       {
+                           <div id="word-preview-container" class="w-100 h-100 p-4 bg-white" style="overflow-y: auto; text-align: left;">
+                               <div class="d-flex justify-content-center align-items-center h-100">
+                                   <div class="spinner-border text-primary" role="status">
+                                       <span class="sr-only">Loading...</span>
+                                   </div>
+                               </div>
+                           </div>
+                       }
+                       else if (ext == ".xlsx")
+                       {
+                           <div id="excel-preview-container" class="w-100 h-100 p-2 bg-white" style="overflow: auto;">
+                               <div class="d-flex justify-content-center align-items-center h-100">
+                                   <div class="spinner-border text-primary" role="status">
+                                       <span class="sr-only">Loading...</span>
+                                   </div>
+                               </div>
+                           </div>
+                       }
+                       else
+                       {
+                           <div class="text-center p-5">
+                               <i class="fas fa-file-download fa-4x text-muted mb-3"></i>
+                               <h4>Preview not available</h4>
+                               <p class="text-muted">This file type cannot be previewed directly.</p>
+                               <a href="@GetDownloadUrl()" class="btn btn-primary" download>
+                                   <i class="fas fa-download"></i> Download File
+                               </a>
+                           </div>
+                       }
+                   }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool ShowModal = false;
+    private FileSystemItem? CurrentItem;
+    private string? AccessToken;
+
+    public void Show(FileSystemItem item, string? token = null)
+    {
+        CurrentItem = item;
+        AccessToken = token;
+        ShowModal = true;
+        StateHasChanged();
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (ShowModal && CurrentItem != null)
+        {
+            var ext = System.IO.Path.GetExtension(CurrentItem.Name).ToLower();
+            if (ext == ".docx")
+            {
+                await RenderWordDoc();
+            }
+            else if (ext == ".xlsx")
+            {
+                await RenderExcelDoc();
+            }
+        }
+    }
+
+    private async Task RenderWordDoc()
+    {
+        try
+        {
+            using var stream = FileService.GetFileStream(CurrentItem!);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            
+            await JSRuntime.InvokeVoidAsync("docPreview.renderWord", "word-preview-container", bytes);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("console.error", "Error rendering Word doc: " + ex.Message);
+        }
+    }
+
+    private async Task RenderExcelDoc()
+    {
+        try
+        {
+            using var stream = FileService.GetFileStream(CurrentItem!);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            
+            await JSRuntime.InvokeVoidAsync("docPreview.renderExcel", "excel-preview-container", bytes);
+        }
+        catch (Exception ex)
+        {
+             await JSRuntime.InvokeVoidAsync("console.error", "Error rendering Excel doc: " + ex.Message);
+        }
+    }
+
+    public void Close()
+    {
+        ShowModal = false;
+        CurrentItem = null;
+        AccessToken = null;
+        StateHasChanged();
+    }
+    
+    private string GetDownloadUrl()
+    {
+        if (CurrentItem == null) return "#";
+        var url = $"/api/files/{CurrentItem.Id}/content";
+        if (!string.IsNullOrEmpty(AccessToken)) url += $"?token={AccessToken}";
+        return url;
+    }
+    
+    private string GetViewUrl()
+    {
+         if (CurrentItem == null) return "#";
+        var url = $"/api/files/{CurrentItem.Id}/view";
+        if (!string.IsNullOrEmpty(AccessToken)) url += $"?token={AccessToken}";
+        return url;
+    }
+
+    private string GetIcon(FileSystemItem? item)
+    {
+        if (item == null) return "fa-file";
+        var ext = System.IO.Path.GetExtension(item.Name).ToLower();
+        return ext switch
+        {
+            ".pdf" => "fa-file-pdf",
+            ".jpg" or ".png" or ".jpeg" => "fa-file-image",
+            ".txt" => "fa-file-alt",
+            ".docx" or ".doc" => "fa-file-word",
+            ".xlsx" or ".xls" or ".csv" => "fa-file-excel",
+            ".html" or ".htm" => "fa-file-code",
+            _ => "fa-file"
+        };
+    }
+}

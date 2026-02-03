@@ -1,0 +1,268 @@
+@page "/estimator-tools"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@using ApexCharts
+@using Microsoft.AspNetCore.Authorization
+@inject ProjectService ProjectService
+@inject EmployeeService EmployeeService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject AuthenticationService AuthService
+@inject PermissionService PermissionService
+@rendermode InteractiveServer
+
+<PageTitle>Estimator Tools - Copelin Work Flow Management</PageTitle>
+
+<AuthorizeView>
+    <Authorized Context="authContext">
+        @if (hasAccess)
+        {
+            <div class="container-fluid mt-3">
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <h3><i class="fas fa-chart-bar"></i> Estimator Tools</h3>
+                        <p class="text-muted">Workload visualisation for Consultants and Contractors</p>
+                    </div>
+                </div>
+
+                <!-- Region Filter -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-body py-2">
+                                <label class="mb-0 mr-2">Region:</label>
+                                @if (canSelectRegion)
+                                {
+                                    <select class="custom-select custom-select-sm" value="@selectedRegion" @onchange="OnRegionChanged">
+                                        <option value="All">All Regions</option>
+                                        @foreach (var region in regions)
+                                        {
+                                            <option value="@region.RegionName">@region.RegionName</option>
+                                        }
+                                    </select>
+                                }
+                                else
+                                {
+                                    <strong>@selectedRegion</strong>
+                                    <span class="text-muted ml-2"><small>(Locked to your region)</small></span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card card-primary card-outline card-tabs">
+                    <div class="card-header p-0 pt-1 border-bottom-0">
+                        <ul class="nav nav-tabs" id="custom-tabs-three-tab" role="tablist">
+                            <li class="nav-item">
+                                <a class="nav-link @(activeTab == "consultants" ? "active" : "")" @onclick="@(() => activeTab = "consultants")" href="javascript:void(0)">Consultants</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link @(activeTab == "contractors" ? "active" : "")" @onclick="@(() => activeTab = "contractors")" href="javascript:void(0)">Contractors</a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="card-body">
+                        <div class="tab-content">
+                            @if (isLoading)
+                            {
+                                <div class="text-center py-5">
+                                    <i class="fas fa-spinner fa-spin fa-3x text-primary"></i>
+                                    <p class="mt-3">Loading data...</p>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="tab-pane fade show active">
+                                    @if (activeTab == "consultants")
+                                    {
+                                        <div class="row">
+                                            <div class="col-md-12">
+                                                <h5>Consultant Workload @(selectedRegion != "All" ? $"({selectedRegion})" : "")</h5>
+                                                @if (consultantData.Any())
+                                                {
+                                                    <ApexChart TItem="WorkloadItem"
+                                                               Title="Active Projects by Consultant"
+                                                               Options=chartOptions>
+
+                                                        <ApexPointSeries TItem="WorkloadItem"
+                                                                         Items="consultantData"
+                                                                         Name="Active Projects"
+                                                                         SeriesType="SeriesType.Bar"
+                                                                         XValue="@(e => e.Name)"
+                                                                         YValue="@(e => e.Count)"
+                                                                         OrderByDescending="e=>e.Y"/>
+                                                    </ApexChart>
+                                                }
+                                                else
+                                                {
+                                                    <div class="alert alert-info">No active projects found for consultants in this region.</div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                    else if (activeTab == "contractors")
+                                    {
+                                        <div class="row">
+                                            <div class="col-md-12">
+                                                <h5>Contractor Workload @(selectedRegion != "All" ? $"({selectedRegion})" : "")</h5>
+                                                @if (contractorData.Any())
+                                                {
+                                                    <ApexChart TItem="WorkloadItem"
+                                                               Title="Active Projects by Contractor"
+                                                               Options=chartOptions>
+
+                                                        <ApexPointSeries TItem="WorkloadItem"
+                                                                         Items="contractorData"
+                                                                         Name="Active Projects"
+                                                                         SeriesType="SeriesType.Bar"
+                                                                         XValue="@(e => e.Name)"
+                                                                         YValue="@(e => e.Count)"
+                                                                         OrderByDescending="e=>e.Y"/>
+                                                    </ApexChart>
+                                                }
+                                                else
+                                                {
+                                                    <div class="alert alert-info">No active projects found for contractors in this region.</div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="text-center mt-5">
+                <h3>Access Denied</h3>
+                <p>You do not have permission to view this page.</p>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="text-center mt-5">
+            <h3>Please log in to access this page.</h3>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private bool hasAccess = false;
+    private bool canSelectRegion = false;
+    private bool isLoading = true;
+    private string activeTab = "consultants";
+    private string selectedRegion = "All";
+    private User? currentUser;
+
+    private List<Region> regions = new();
+    private List<WorkloadItem> consultantData = new();
+    private List<WorkloadItem> contractorData = new();
+    private List<ProjectList> allActiveProjects = new();
+
+    private ApexChartOptions<WorkloadItem> chartOptions = new ApexChartOptions<WorkloadItem>
+    {
+        Chart = new Chart { Toolbar = new Toolbar { Show = false } },
+        PlotOptions = new PlotOptions
+        {
+            Bar = new PlotOptionsBar
+            {
+                Horizontal = true, // Horizontal bars for easier reading of names
+                DataLabels = new PlotOptionsBarDataLabels { Position = "top" }
+            }
+        },
+        DataLabels = new DataLabels { Enabled = true, OffsetX = 30 },
+        Xaxis = new XAxis { Labels = new XAxisLabels { Show = true } },
+        Grid = new Grid { Show = true, Xaxis = new GridXAxis { Lines = new Lines { Show = true } } }
+    };
+
+    public class WorkloadItem
+    {
+        public string Name { get; set; } = "";
+        public int Count { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId");
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                currentUser = await AuthService.GetUserById(userId);
+                if (currentUser != null)
+                {
+                    hasAccess = await PermissionService.UserHasPermission(currentUser, "ViewEstimatorTools");
+                    
+                    // Principal Estimators (UserRole.PrincipalEstimator = 4) and Admins (5) can select region
+                    // Estimators and Managers are locked to their region
+                    canSelectRegion = currentUser.Role == UserRole.PrincipalEstimator || currentUser.Role == UserRole.Admin;
+                    
+                    if (!canSelectRegion)
+                    {
+                        selectedRegion = currentUser.Region ?? "All";
+                    }
+                }
+            }
+        }
+
+        if (hasAccess)
+        {
+            await LoadData();
+        }
+        
+        isLoading = false;
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        regions = await EmployeeService.GetAllRegions();
+        
+        // Fetch all projects (or active ones)
+        // Fetch all projects (or active ones)
+        // Filter: Status != 2 (On Hold), != 5 (Done), != 4 (Cancelled)
+        // Checking: 0=Created, 1=In Progress, 2=On Hold, 3=Review, 4=Cancelled, 5=Done
+        // So we want 0 and 1.
+        
+        var allProjects = await ProjectService.GetAllProjects();
+        allActiveProjects = allProjects.Where(p => p.ProjectStatus == 0 || p.ProjectStatus == 1).ToList();
+        
+        FilterDataByRegion();
+        isLoading = false;
+    }
+
+    private void OnRegionChanged(ChangeEventArgs e)
+    {
+        selectedRegion = e.Value?.ToString() ?? "All";
+        FilterDataByRegion();
+    }
+
+    private void FilterDataByRegion()
+    {
+        var filteredProjects = selectedRegion == "All" 
+            ? allActiveProjects 
+            : allActiveProjects.Where(p => p.ProjectRegion == selectedRegion).ToList();
+
+        // Group by Consultant
+        consultantData = filteredProjects
+            .Where(p => !string.IsNullOrEmpty(p.ProjectConsultant))
+            .GroupBy(p => p.ProjectConsultant!)
+            .Select(g => new WorkloadItem { Name = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .ToList();
+
+        // Group by Contractor
+        contractorData = filteredProjects
+            .Where(p => !string.IsNullOrEmpty(p.ProjectContractor))
+            .GroupBy(p => p.ProjectContractor!)
+            .Select(g => new WorkloadItem { Name = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .ToList();
+    }
+}

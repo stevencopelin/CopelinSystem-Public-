@@ -1,0 +1,877 @@
+@page "/reports/projects"
+@using CopelinSystem.Services
+@using CopelinSystem.Models
+@using ApexCharts
+@inject ReportingService ReportingService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<AuthorizeView>
+    <Authorized>
+        <div class="content-header">
+            <div class="container-fluid">
+                <div class="row mb-2">
+                    <div class="col-sm-6">
+                        <h1 class="m-0">Project Performance Report</h1>
+                    </div>
+                    <div class="col-sm-6">
+                        <ol class="breadcrumb float-sm-right">
+                            <li class="breadcrumb-item"><a href="/">Home</a></li>
+                            <li class="breadcrumb-item"><a href="/reports">Reports</a></li>
+                            <li class="breadcrumb-item active">Project Performance</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <section class="content">
+            <div class="container-fluid">
+                @if (isLoading)
+                {
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="sr-only">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else if (!isAuthorized)
+                {
+                     <div class="text-center mt-5">
+                        <h3>Access Denied</h3>
+                        <p>You do not have the required permissions ('View Reports') to view this report.</p>
+                    </div>
+                }
+                else
+                {
+                    <!-- Top Row: KPI Cards -->
+                    <div class="row mb-4">
+                        <div class="col-lg-2 col-md-4 col-sm-6 mb-3 mb-lg-0">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-body d-flex align-items-center justify-content-between p-3">
+                                    <div>
+                                        <h6 class="text-uppercase text-muted font-weight-bold small mb-1">On-Time</h6>
+                                        <h4 class="font-weight-bold mb-0 text-success">@onTimeRate.ToString("P0")</h4>
+                                    </div>
+                                    <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                        <i class="fas fa-clock text-success fa-lg"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-2 col-md-4 col-sm-6 mb-3 mb-lg-0">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-body d-flex align-items-center justify-content-between p-3">
+                                    <div>
+                                        <h6 class="text-uppercase text-muted font-weight-bold small mb-1">Completed</h6>
+                                        <h4 class="font-weight-bold mb-0 text-info">@totalCompleted</h4>
+                                    </div>
+                                    <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                        <i class="fas fa-check-circle text-info fa-lg"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-2 col-md-4 col-sm-6 mb-3 mb-lg-0">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-body d-flex align-items-center justify-content-between p-3">
+                                    <div>
+                                        <h6 class="text-uppercase text-muted font-weight-bold small mb-1">Overdue</h6>
+                                        <h4 class="font-weight-bold mb-0 text-danger">@overdueProjects.Count</h4>
+                                    </div>
+                                    <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                        <i class="fas fa-exclamation-triangle text-danger fa-lg"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-lg-2 col-md-4 col-sm-6 mb-3 mb-lg-0">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-body d-flex align-items-center justify-content-between p-3">
+                                    <div>
+                                        <h6 class="text-uppercase text-muted font-weight-bold small mb-1">Approaching</h6>
+                                        <h4 class="font-weight-bold mb-0 text-warning">@approachingProjects.Count</h4>
+                                    </div>
+                                    <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                        <i class="fas fa-flag-checkered text-warning fa-lg"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-2 col-md-4 col-sm-6 mb-3 mb-lg-0">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-body d-flex align-items-center justify-content-between p-3">
+                                    <div>
+                                        <h6 class="text-uppercase text-muted font-weight-bold small mb-1">Tender Cls</h6>
+                                        <h4 class="font-weight-bold mb-0 text-primary">@approachingTenderProjects.Count</h4>
+                                    </div>
+                                    <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                        <i class="fas fa-file-signature text-primary fa-lg"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-2 col-md-4 col-sm-6 mb-3 mb-lg-0">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-body d-flex align-items-center justify-content-between p-3">
+                                    <div>
+                                        <h6 class="text-uppercase text-muted font-weight-bold small mb-1">WR Overdue</h6>
+                                        <h4 class="font-weight-bold mb-0 text-orange">@wrOverdueProjects.Count</h4>
+                                    </div>
+                                    <div class="bg-light rounded-circle p-3 d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
+                                        <i class="fas fa-history text-orange fa-lg"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Row -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title text-secondary mb-4">Project Status Distribution</h5>
+                                    @if(totalCompleted + overdueProjects.Count > 0)
+                                    {
+                                        <ApexChart TItem="ReportChartItem"
+                                                   Title=""
+                                                   Height="250"
+                                                   Options="@statusChartOptions">
+                                            <ApexPointSeries TItem="ReportChartItem"
+                                                             Items="@statusChartData"
+                                                             Name="Projects"
+                                                             SeriesType="SeriesType.Donut"
+                                                             XValue="@(e => e.Label)"
+                                                             YAggregate="@(e => e.Sum(s => s.Value))"
+                                                             OrderByDescending="e=>e.Y"
+                                                             ShowDataLabels="true" />
+                                        </ApexChart>
+                                    }
+                                    else
+                                    {
+                                         <div class="text-center text-muted py-5">No data available</div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title text-secondary mb-4">Recent Duration Analysis (Variance)</h5>
+                                    @if(durationStats.Any())
+                                    {
+                                        <ApexChart TItem="ReportChartItem"
+                                                   Title=""
+                                                   Height="250"
+                                                   Options="@varianceChartOptions">
+                                            <ApexPointSeries TItem="ReportChartItem"
+                                                             Items="@varianceChartData"
+                                                             Name="Variance (Days)"
+                                                             SeriesType="SeriesType.Bar"
+                                                             XValue="@(e => e.Label)"
+                                                             YAggregate="@(e => e.Sum(s => s.Value))"
+                                                             ShowDataLabels="false" />
+                                        </ApexChart>
+                                    }
+                                    else
+                                    {
+                                         <div class="text-center text-muted py-5">No duration data available</div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Main Content -->
+                    <ul class="nav nav-tabs mb-3">
+                        <li class="nav-item position-relative">
+                            <a class="nav-link @(activeTab == "overdue" ? "active" : "")" @onclick='() => SetActiveTab("overdue")' style="cursor: pointer; display: flex; align-items: center;">
+                                Critical Attention <span class="badge badge-danger ml-1">@overdueProjects.Count</span>
+                                <i class="fas fa-info-circle ml-2 text-muted" @onclick='(e) => ToggleHelp(e, "overdue")' @onclick:stopPropagation></i>
+                            </a>
+                            @if(currentHelpTab == "overdue")
+                            {
+                                <div class="popover fade show bs-popover-right" style="position: absolute; top: 0; left: 100%; width: 250px; z-index: 1050; margin-left: 10px;">
+                                    <div class="arrow" style="top: 50%;"></div>
+                                    <h3 class="popover-header">Report Description 
+                                        <button type="button" class="close ml-2" @onclick="CloseHelp">
+                                            <span aria-hidden="true">&times;</span>
+                                        </button>
+                                    </h3>
+                                    <div class="popover-body">
+                                        Projects that are past their due date. <strong>Immediate action required.</strong>
+                                    </div>
+                                </div>
+                            }
+                        </li>
+                        <li class="nav-item position-relative">
+                            <a class="nav-link @(activeTab == "wr_overdue" ? "active" : "")" @onclick='() => SetActiveTab("wr_overdue")' style="cursor: pointer; display: flex; align-items: center;">
+                                WR Overdue <span class="badge bg-orange text-white ml-1">@wrOverdueProjects.Count</span>
+                                <i class="fas fa-info-circle ml-2 text-muted" @onclick='(e) => ToggleHelp(e, "wr_overdue")' @onclick:stopPropagation></i>
+                            </a>
+                             @if(currentHelpTab == "wr_overdue")
+                            {
+                                <div class="popover fade show bs-popover-right" style="position: absolute; top: 0; left: 100%; width: 250px; z-index: 1050; margin-left: 10px;">
+                                    <div class="arrow" style="top: 50%;"></div>
+                                    <h3 class="popover-header">Report Description
+                                        <button type="button" class="close ml-2" @onclick="CloseHelp">
+                                            <span aria-hidden="true">&times;</span>
+                                        </button>
+                                    </h3>
+                                    <div class="popover-body">
+                                        Projects created over <strong>3 weeks ago</strong> that haven't commenced (Work Request pending).
+                                    </div>
+                                </div>
+                            }
+                        </li>
+                        <li class="nav-item position-relative">
+                            <a class="nav-link @(activeTab == "approaching" ? "active" : "")" @onclick='() => SetActiveTab("approaching")' style="cursor: pointer; display: flex; align-items: center;">
+                                Approaching Completion <span class="badge badge-warning ml-1">@approachingProjects.Count</span>
+                                <i class="fas fa-info-circle ml-2 text-muted" @onclick='(e) => ToggleHelp(e, "approaching")' @onclick:stopPropagation></i>
+                            </a>
+                             @if(currentHelpTab == "approaching")
+                            {
+                                <div class="popover fade show bs-popover-right" style="position: absolute; top: 0; left: 100%; width: 250px; z-index: 1050; margin-left: 10px;">
+                                    <div class="arrow" style="top: 50%;"></div>
+                                    <h3 class="popover-header">Report Description
+                                        <button type="button" class="close ml-2" @onclick="CloseHelp">
+                                            <span aria-hidden="true">&times;</span>
+                                        </button>
+                                    </h3>
+                                    <div class="popover-body">
+                                        Projects due for completion within the <strong>next 3 weeks</strong>.
+                                    </div>
+                                </div>
+                            }
+                        </li>
+                        <li class="nav-item position-relative">
+                            <a class="nav-link @(activeTab == "tender" ? "active" : "")" @onclick='() => SetActiveTab("tender")' style="cursor: pointer; display: flex; align-items: center;">
+                                Tender Close <span class="badge badge-info ml-1">@approachingTenderProjects.Count</span>
+                                <i class="fas fa-info-circle ml-2 text-muted" @onclick='(e) => ToggleHelp(e, "tender")' @onclick:stopPropagation></i>
+                            </a>
+                             @if(currentHelpTab == "tender")
+                            {
+                                <div class="popover fade show bs-popover-right" style="position: absolute; top: 0; left: 100%; width: 250px; z-index: 1050; margin-left: 10px;">
+                                    <div class="arrow" style="top: 50%;"></div>
+                                    <h3 class="popover-header">Report Description
+                                        <button type="button" class="close ml-2" @onclick="CloseHelp">
+                                            <span aria-hidden="true">&times;</span>
+                                        </button>
+                                    </h3>
+                                    <div class="popover-body">
+                                        Projects with tender closing dates approaching in the <strong>next 3 weeks</strong>.
+                                    </div>
+                                </div>
+                            }
+                        </li>
+                        <li class="nav-item position-relative">
+                            <a class="nav-link @(activeTab == "duration" ? "active" : "")" @onclick='() => SetActiveTab("duration")' style="cursor: pointer; display: flex; align-items: center;">
+                                Duration Analysis
+                                <i class="fas fa-info-circle ml-2 text-muted" @onclick='(e) => ToggleHelp(e, "duration")' @onclick:stopPropagation></i>
+                            </a>
+                             @if(currentHelpTab == "duration")
+                            {
+                                <div class="popover fade show bs-popover-right" style="position: absolute; top: 0; left: 100%; width: 250px; z-index: 1050; margin-left: 10px;">
+                                    <div class="arrow" style="top: 50%;"></div>
+                                    <h3 class="popover-header">Report Description
+                                        <button type="button" class="close ml-2" @onclick="CloseHelp">
+                                            <span aria-hidden="true">&times;</span>
+                                        </button>
+                                    </h3>
+                                    <div class="popover-body">
+                                        Comparison of <strong>scheduled vs. actual</strong> project durations for performance tracking.
+                                    </div>
+                                </div>
+                            }
+                        </li>
+                    </ul>
+
+                    <!-- Action Bar -->
+                    <div class="d-flex justify-content-between align-items-center mb-4 p-3 bg-white rounded shadow-sm">
+                        <div class="d-flex align-items-center">
+                            <h5 class="m-0 mr-4 text-secondary"><i class="fas fa-filter mr-2"></i>Report Period</h5>
+                            <div class="input-group mr-2" style="width: 200px;">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text bg-light border-0"><i class="far fa-calendar-alt"></i></span>
+                                </div>
+                                <input type="date" class="form-control border-left-0" @bind="filterStartDate" placeholder="Start">
+                            </div>
+                            <span class="text-muted mr-2">-</span>
+                            <div class="input-group mr-3" style="width: 200px;">
+                                <div class="input-group-prepend">
+                                    <span class="input-group-text bg-light border-0"><i class="far fa-calendar-alt"></i></span>
+                                </div>
+                                <input type="date" class="form-control border-left-0" @bind="filterEndDate" placeholder="End">
+                            </div>
+                            
+                            <button class="btn btn-primary btn-sm rounded-pill px-3 shadow-none mr-2" @onclick="LoadData">
+                                Apply
+                            </button>
+                            @if(filterStartDate.HasValue || filterEndDate.HasValue) 
+                            {
+                                <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 shadow-none" @onclick="ClearFilter">
+                                    Clear
+                                </button>
+                            }
+                        </div>
+                        
+                        <div class="d-flex align-items-center">
+                            <div class="btn-group btn-group-sm mr-3">
+                                <button type="button" class="btn btn-light border" @onclick="() => SetDateRange(30)">30 Days</button>
+                                <button type="button" class="btn btn-light border" @onclick="() => SetDateRange(90)">Quarter</button>
+                                <button type="button" class="btn btn-light border" @onclick="() => SetDateRange(365)">Year</button>
+                            </div>
+
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-success btn-sm dropdown-toggle rounded-pill px-3 shadow-sm" data-toggle="dropdown">
+                                    <i class="fas fa-download mr-1"></i> Export
+                                </button>
+                                <div class="dropdown-menu dropdown-menu-right shadow border-0">
+                                    <a class="dropdown-item" href="#" @onclick="ExportCsv" @onclick:preventDefault><i class="fas fa-file-csv mr-2 text-success"></i> Export CSV</a>
+                                    <div class="dropdown-divider"></div>
+                                    <a class="dropdown-item" href="#" @onclick="PrintReport" @onclick:preventDefault><i class="fas fa-print mr-2 text-secondary"></i> Print View</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (activeTab == "overdue")
+                    {
+                    <div class="row">
+                        <!-- Overdue Projects Table -->
+                        <div class="col-md-12">
+                            <div class="card card-outline card-danger">
+                                <div class="card-header">
+                                    <h3 class="card-title">Critical Attention: Overdue Projects</h3>
+                                </div>
+                                <div class="card-body p-0">
+                                    <table class="table table-striped table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Project Location</th>
+                                                <th>Project Name</th>
+                                                <th>Client</th>
+                                                <th>Due Date</th>
+                                                <th>Days Overdue</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var p in overdueProjects)
+                                            {
+                                                var daysOver = (DateTime.Now.Date - (p.ProjectClientCompletion ?? DateTime.Now.Date)).TotalDays;
+                                                <tr>
+                                                    <td>@p.ProjectLocation</td>
+                                                    <td>@p.ProjectName</td>
+                                                    <td>@p.ProjectClient</td>
+                                                    <td>@(p.ProjectClientCompletion?.ToShortDateString())</td>
+                                                    <td><span class="badge badge-danger">@daysOver.ToString("N0") days</span></td>
+                                                    <td>
+                                                        <a href="/projects/view/@p.ProjectId" class="btn btn-xs btn-primary">View</a>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    }
+
+                    @if (activeTab == "wr_overdue")
+                    {
+                    <div class="row">
+                        <!-- WR Overdue Projects -->
+                        <div class="col-md-12">
+                            <div class="card card-outline card-orange">
+                                <div class="card-header">
+                                    <h3 class="card-title">@(filterEndDate.HasValue ? "Projects Created in Period (Not Started by Estimator)" : "Projects Created > 3 Weeks Ago (Not Started)")</h3>
+                                </div>
+                                <div class="card-body p-0">
+                                    @if (!wrOverdueProjects.Any())
+                                    {
+                                        <div class="p-3 text-center text-muted">@(filterEndDate.HasValue ? "No unstarted projects found in this period." : "No projects found pending start for > 3 weeks.")</div>
+                                    }
+                                    else
+                                    {
+                                        <table class="table table-striped table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>WR Number</th>
+                                                    <th>Project Location</th>
+                                                    <th>Project Name</th>
+                                                    <th>Date Created</th>
+                                                    <th>Weeks Pending</th>
+                                                    <th>Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var p in wrOverdueProjects)
+                                                {
+                                                    var weeksPending = (DateTime.Now.Date - p.ProjectDateCreated).TotalDays / 7;
+                                                    <tr>
+                                                        <td>@p.ProjectWr</td>
+                                                        <td>@p.ProjectLocation</td>
+                                                        <td>@p.ProjectName</td>
+                                                        <td>@p.ProjectDateCreated.ToShortDateString()</td>
+                                                        <td><span class="badge badge-warning">@weeksPending.ToString("N1") weeks</span></td>
+                                                        <td>
+                                                            <a href="/projects/view/@p.ProjectId" class="btn btn-xs btn-primary">View</a>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    }
+
+                    @if (activeTab == "approaching")
+                    {
+                    <div class="row">
+                        <!-- Approaching Completion -->
+                        <div class="col-md-12">
+                            <div class="card card-outline card-warning">
+                                <div class="card-header d-flex p-0">
+                                    <h3 class="card-title p-3">Approaching Completion (Next 3 Weeks)</h3>
+                                </div>
+                                <div class="card-body p-0">
+                                    @if (!approachingProjects.Any())
+                                    {
+                                        <div class="p-3 text-center text-muted">No projects found approaching completion in this period.</div>
+                                    }
+                                    else
+                                    {
+                                        <table class="table table-striped table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>Project Location</th>
+                                                    <th>Project Name</th>
+                                                    <th>Client</th>
+                                                    <th>Due Date</th>
+                                                    <th>Days Remaining</th>
+                                                    <th>Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var p in approachingProjects)
+                                                {
+                                                    var daysLeft = (p.ProjectClientCompletion!.Value.Date - DateTime.Now.Date).TotalDays;
+                                                    <tr>
+                                                        <td>@p.ProjectLocation</td>
+                                                        <td>@p.ProjectName</td>
+                                                        <td>@p.ProjectClient</td>
+                                                        <td>@(p.ProjectClientCompletion?.ToShortDateString())</td>
+                                                        <td>
+                                                            @if(daysLeft < 0) {
+                                                                <span class="badge badge-danger">Overdue (@Math.Abs(daysLeft).ToString("N0") days)</span>
+                                                            } else {
+                                                                <span class="badge badge-warning">@daysLeft.ToString("N0") days left</span>
+                                                            }
+                                                        </td>
+                                                        <td>
+                                                            <a href="/projects/view/@p.ProjectId" class="btn btn-xs btn-primary">View</a>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+
+
+                    </div>
+                    }
+
+                    @if (activeTab == "tender")
+                    {
+                    <div class="row">
+                        <!-- Approaching Tender Close -->
+                        <div class="col-md-12">
+                            <div class="card card-outline card-info">
+                                <div class="card-header d-flex p-0">
+                                    <h3 class="card-title p-3">Approaching Tender Close @(filterEndDate.HasValue ? "(Selected Period)" : "(Next 3 Weeks)")</h3>
+                                </div>
+                                <div class="card-body p-0">
+                                    @if (!approachingTenderProjects.Any())
+                                    {
+                                        <div class="p-3 text-center text-muted">No projects found approaching tender close in this period.</div>
+                                    }
+                                    else
+                                    {
+                                        <table class="table table-striped table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>WR Number</th>
+                                                    <th>Project Location</th>
+                                                    <th>Project Name</th>
+                                                    <th>Client</th>
+                                                    <th>Tender Close Date</th>
+                                                    <th>Days Remaining</th>
+                                                    <th>Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var p in approachingTenderProjects)
+                                                {
+                                                    var daysLeft = (p.ProjectTendered!.Value.Date - DateTime.Now.Date).TotalDays;
+                                                    <tr>
+                                                        <td>@p.ProjectWr</td>
+                                                        <td>@p.ProjectLocation</td>
+                                                        <td>@p.ProjectName</td>
+                                                        <td>@p.ProjectClient</td>
+                                                        <td>@(p.ProjectTendered?.ToShortDateString())</td>
+                                                        <td>
+                                                            @if(daysLeft < 0) {
+                                                                <span class="badge badge-secondary">Closed (@Math.Abs(daysLeft).ToString("N0") days ago)</span>
+                                                            } else {
+                                                                <span class="badge badge-info">@daysLeft.ToString("N0") days left</span>
+                                                            }
+                                                        </td>
+                                                        <td>
+                                                            <a href="/projects/view/@p.ProjectId" class="btn btn-xs btn-primary">View</a>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    }
+
+                    @if (activeTab == "duration")
+                    {
+                    <div class="row">
+                        <!-- Duration Analysis -->
+                        <div class="col-md-12">
+                            <div class="card card-outline card-primary">
+                                <div class="card-header">
+                                    <h3 class="card-title">Duration Analysis (Recent Completed)</h3>
+                                </div>
+                                <div class="card-body p-0">
+                                    <table class="table table-striped table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 15%">Location</th>
+                                                <th style="width: 20%">Project</th>
+                                                <th style="width: 10%">Start Date</th>
+                                                <th style="width: 10%">Sched. End</th>
+                                                <th style="width: 10%">Actual End</th>
+                                                <th style="width: 5%" class="text-center">Sched.</th>
+                                                <th style="width: 5%" class="text-center">Actual</th>
+                                                <th style="width: 25%">Variance</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var d in durationStats)
+                                            {
+                                                var varianceColor = d.Variance <= 0 ? "success" : "danger";
+                                                var varianceWidth = Math.Min(Math.Abs(d.Variance) * 2, 100); // Scale bar width, max 100%
+                                                // Calculate relative width of actual vs scheduled for visualization? 
+                                                // Simpler: Just show variance bar.
+                                                
+                                                <tr>
+                                                    <td>@d.Location</td>
+                                                    <td>@d.Name</td>
+                                                    <td>@(d.Start?.ToShortDateString() ?? "-")</td>
+                                                    <td>@(d.SchedEnd?.ToShortDateString() ?? "-")</td>
+                                                    <td>@(d.ActualEnd?.ToShortDateString() ?? "-")</td>
+                                                    <td class="text-center">@d.SchedDays</td>
+                                                    <td class="text-center">@d.ActualDays</td>
+                                                    <td>
+                                                        <div class="d-flex align-items-center">
+                                                            <span class="badge badge-@varianceColor mr-2" style="width: 60px;">
+                                                                @(d.Variance > 0 ? "+" : "")@d.Variance days
+                                                            </span>
+                                                            <div class="progress flex-grow-1" style="height: 10px;">
+                                                                @if (d.Variance > 0)
+                                                                {
+                                                                    // Late: Show red bar representing delay magnitude
+                                                                    <div class="progress-bar bg-danger" role="progressbar" style="width: @varianceWidth%"></div>
+                                                                }
+                                                                else if (d.Variance < 0)
+                                                                {
+                                                                    // Early: Show green bar
+                                                                    <div class="progress-bar bg-success" role="progressbar" style="width: @varianceWidth%"></div>
+                                                                }
+                                                                else
+                                                                {
+                                                                     // On time
+                                                                     <div class="progress-bar bg-success" role="progressbar" style="width: 2px"></div>
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                    }
+                }
+            </div>
+        </section>
+    </Authorized>
+    <NotAuthorized>
+         <div class="text-center mt-5">
+            <h3>Access Denied</h3>
+            <p>You do not have permission to view reports.</p>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+@inject PermissionService PermissionService
+@inject AuthenticationService AuthService
+
+    private bool isLoading = true;
+    private bool isAuthorized = false;
+    
+    // KPIs
+    private double onTimeRate;
+    private int totalCompleted;
+    // private int overdueProjectsCount; // Removed unused field
+    
+    // Lists
+    private List<ProjectList> redoProjects = new();
+    private List<ProjectList> overdueProjects = new();
+    private List<ProjectList> wrOverdueProjects = new();
+    private List<(string Name, string Location, DateTime? Start, DateTime? SchedEnd, DateTime? ActualEnd, int SchedDays, int ActualDays, int Variance)> durationStats = new();
+    private List<ProjectList> approachingProjects = new();
+    private int approachingDays = 21; // Default 3 weeks
+    private List<ProjectList> approachingTenderProjects = new();
+    private int approachingTenderWeeks = 3; // Default 3 weeks
+    private string? regionFilter = null;
+    
+    // Filters
+    private DateTime? filterStartDate;
+    private DateTime? filterEndDate;
+
+    
+    // Tabs
+    private string activeTab = "overdue";
+
+    // Charts
+    private List<ReportChartItem> statusChartData = new();
+    private ApexChartOptions<ReportChartItem> statusChartOptions = new();
+    private List<ReportChartItem> varianceChartData = new();
+    private ApexChartOptions<ReportChartItem> varianceChartOptions = new();
+
+    public class ReportChartItem
+    {
+        public string Label { get; set; } = "";
+        public decimal Value { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Chart Options configuration
+        statusChartOptions.Chart = new Chart { Toolbar = new Toolbar { Show = false } };
+        statusChartOptions.Legend = new Legend { Position = LegendPosition.Bottom };
+        statusChartOptions.Colors = new List<string> { "#17a2b8", "#dc3545", "#ffc107" }; // Info (Completed), Danger (Overdue), Warning
+
+        varianceChartOptions.Chart = new Chart { Toolbar = new Toolbar { Show = false } };
+        varianceChartOptions.Xaxis = new XAxis { Labels = new XAxisLabels { Show = false } }; // Hide project names if too many
+        varianceChartOptions.Colors = new List<string> { "#007bff" };
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var appUser = await AuthService.GetUserFromPrincipal(user); 
+
+        if (appUser != null)
+        {
+             isAuthorized = await PermissionService.UserHasPermission(appUser, "ViewReports");
+             if (isAuthorized)
+             {
+                 if (appUser.Role != UserRole.Admin)
+                 {
+                     regionFilter = appUser.Region;
+                 }
+                 await LoadData();
+             }
+             else 
+             {
+                 isLoading = false;
+             }
+        }
+        else
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadData()
+    {
+        try 
+        {
+            // 1. On Time Stats
+            var stats = await ReportingService.GetProjectOnTimeStats(regionFilter);
+            totalCompleted = stats.total;
+            onTimeRate = totalCompleted > 0 ? (double)stats.onTime / totalCompleted : 0;
+
+            // 2. Overdue
+            overdueProjects = await ReportingService.GetOverdueProjects(regionFilter);
+
+            // 2b. WR Overdue
+            wrOverdueProjects = await ReportingService.GetProjectsWROverdue(filterStartDate, filterEndDate, regionFilter);
+
+            // 3. Durations
+            // Use 50 as limit when filtering, or just higher
+            durationStats = await ReportingService.GetProjectDurationStats(filterStartDate, filterEndDate, 50, regionFilter);
+
+            // 4. Approaching
+            await LoadApproachingProjects();
+            
+            // 5. Approaching Tender
+            await LoadApproachingTenderProjects();
+
+            // 6. Populate Charts
+            statusChartData = new List<ReportChartItem>
+            {
+                new ReportChartItem { Label = "Completed", Value = totalCompleted },
+                new ReportChartItem { Label = "Overdue", Value = overdueProjects.Count },
+                new ReportChartItem { Label = "Approaching", Value = approachingProjects.Count }
+            };
+
+            varianceChartData = durationStats.Select(d => new ReportChartItem { Label = d.Name, Value = d.Variance }).ToList();
+        } 
+        finally 
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadApproachingProjects()
+    {
+        approachingProjects = await ReportingService.GetProjectsApproachingCompletion(approachingDays, regionFilter);
+    }
+
+    private async Task LoadApproachingTenderProjects()
+    {
+        approachingTenderProjects = await ReportingService.GetProjectsApproachingTenderClose(approachingTenderWeeks, filterStartDate, filterEndDate, regionFilter);
+    }
+
+    private async Task ExportCsv()
+    {
+        var sb = new System.Text.StringBuilder();
+        string filename = $"ProjectPerformance_Export_{DateTime.Now:yyyyMMdd}.csv";
+
+        if (activeTab == "duration")
+        {
+            filename = $"DurationAnalysis_{DateTime.Now:yyyyMMdd}.csv";
+            sb.AppendLine("Location,Project,Start Date,Sched End,Actual End,Sched Days,Actual Days,Variance");
+            foreach (var d in durationStats)
+            {
+                sb.AppendLine($"\"{d.Location}\",\"{d.Name}\",{d.Start:yyyy-MM-dd},{d.SchedEnd:yyyy-MM-dd},{d.ActualEnd:yyyy-MM-dd},{d.SchedDays},{d.ActualDays},{d.Variance}");
+            }
+        }
+        else if (activeTab == "overdue")
+        {
+            filename = $"OverdueProjects_{DateTime.Now:yyyyMMdd}.csv";
+            sb.AppendLine("Project,Client,Current Phase,Due Date");
+            foreach (var p in overdueProjects)
+            {
+                // Simple CSV columns for Overdue
+                sb.AppendLine($"\"{p.ProjectName}\",\"{p.ProjectClient}\",\"{p.ProjectStatus}\",{p.ProjectClientCompletion:yyyy-MM-dd}");
+            }
+        }
+        // Apply similar logic for other tabs if needed (Approaching, WR Overdue)
+        else if (activeTab == "wr_overdue")
+        {
+            filename = $"WROverdue_{DateTime.Now:yyyyMMdd}.csv";
+            sb.AppendLine("WR,Location,Project,Date Created");
+            foreach (var p in wrOverdueProjects)
+            {
+                sb.AppendLine($"\"{p.ProjectWr}\",\"{p.ProjectLocation}\",\"{p.ProjectName}\",{p.ProjectDateCreated:yyyy-MM-dd}");
+            }
+        }
+        else if (activeTab == "approaching")
+        {
+             // Note: 'approaching' tab might be the activeTab variable if we set it, 
+             // but current UI uses "approaching" as a section, not a single tab ID in the variable?
+             // Actually activeTab = "overdue" by default. 
+             // We need to check if we track active tab for Approaching section properly.
+             // Looking at the code: <li class="nav-item"><a class="nav-link @(activeTab == "approaching" ? "active" : "")" ...
+             // Yes, we have 'approaching' tab.
+             
+             filename = $"ApproachingCompletion_{DateTime.Now:yyyyMMdd}.csv";
+             sb.AppendLine("Project,Location,Client,Completion Due");
+             foreach (var p in approachingProjects)
+             {
+                 sb.AppendLine($"\"{p.ProjectName}\",\"{p.ProjectLocation}\",\"{p.ProjectClient}\",{p.ProjectClientCompletion:yyyy-MM-dd}");
+             }
+        }
+        
+        // Trigger Download
+        if (sb.Length > 0)
+        {
+            await JSRuntime.InvokeVoidAsync("downloadCsv", filename, sb.ToString());
+        }
+    }
+    
+    private async Task PrintReport()
+    {
+        await JSRuntime.InvokeVoidAsync("window.print");
+    }
+
+    private async Task ClearFilter()
+    {
+        filterStartDate = null;
+        filterEndDate = null;
+        await LoadData();
+    }
+
+    private async Task SetDateRange(int days)
+    {
+        filterEndDate = DateTime.Now.Date;
+        filterStartDate = DateTime.Now.Date.AddDays(-days);
+        await LoadData();
+    }
+
+    private void SetActiveTab(string tab)
+    {
+        activeTab = tab;
+        // Close help when switching tabs if desired, or keep it independent
+        currentHelpTab = null; 
+    }
+
+    private string? currentHelpTab = null;
+
+    private void ToggleHelp(MouseEventArgs e, string tab)
+    {
+        if (currentHelpTab == tab)
+        {
+            currentHelpTab = null;
+        }
+        else
+        {
+            currentHelpTab = tab;
+        }
+    }
+
+    private void CloseHelp()
+    {
+        currentHelpTab = null;
+    }
+}

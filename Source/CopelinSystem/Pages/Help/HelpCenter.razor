@@ -1,0 +1,257 @@
+@page "/help"
+@rendermode InteractiveServer
+@using CopelinSystem.Services
+@using CopelinSystem.Models
+@using Microsoft.AspNetCore.Authorization
+@inject HelpService HelpService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+<AuthorizeView>
+    <Authorized>
+        <div class="row">
+            <!-- Sidebar: Sections and Article Titles -->
+            <div class="col-md-3">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="mb-0"><i class="fas fa-question-circle mr-2"></i>Help System</h5>
+                    </div>
+                    <div class="card-body p-0 overflow-auto" style="max-height: calc(100vh - 150px);">
+                        @if (!string.IsNullOrEmpty(errorMessage))
+                        {
+                            <div class="alert alert-danger m-3">
+                                <i class="fas fa-exclamation-triangle mr-2"></i> @errorMessage
+                            </div>
+                        }
+                        else if (isLoading)
+                        {
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="sr-only">Loading...</span>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="accordion" id="helpAccordion">
+                                @foreach (var helpItem in sections)
+                                {
+                                    <div class="card border-0 mb-0">
+                                        <div class="card-header bg-light p-0" id="heading-@helpItem.Id">
+                                            <h2 class="mb-0">
+                                                <button class="btn btn-link btn-block text-left font-weight-bold text-dark p-3" 
+                                                        type="button" 
+                                                        data-toggle="collapse" 
+                                                        data-target="#collapse-@helpItem.Id" 
+                                                        aria-expanded="@(selectedArticle?.HelpSectionId == helpItem.Id ? "true" : "false")" 
+                                                        aria-controls="collapse-@helpItem.Id">
+                                                    @if (helpItem.Title == "Getting Started")
+                                                    {
+                                                        <i class="fas fa-star text-warning mr-2"></i>
+                                                    }
+                                                    @helpItem.Title
+                                                </button>
+                                            </h2>
+                                        </div>
+
+                                        <div id="collapse-@helpItem.Id" 
+                                             class="collapse @(selectedArticle?.HelpSectionId == helpItem.Id || (selectedArticle == null && sections.First().Id == helpItem.Id) ? "show" : "")" 
+                                             aria-labelledby="heading-@helpItem.Id" 
+                                             data-parent="#helpAccordion">
+                                            <div class="card-body p-0">
+                                                <div class="list-group list-group-flush">
+                                                    @foreach (var article in helpItem.Articles.OrderBy(a => a.Order))
+                                                    {
+                                                        <button type="button" 
+                                                                class="list-group-item list-group-item-action border-0 pl-4 py-2 @(selectedArticle?.Id == article.Id ? "active" : "")"
+                                                                @onclick="() => SelectArticle(article)">
+                                                            <i class="fas fa-file-alt mr-2 small text-muted"></i> @article.Title
+                                                        </button>
+                                                    }
+                                                    @if (!helpItem.Articles.Any())
+                                                    {
+                                                        <div class="p-3 text-muted small text-center">No articles available</div>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content Area: Article Display -->
+            <div class="col-md-9">
+                <div class="card shadow h-100">
+                    <div class="card-body overflow-auto" style="max-height: calc(100vh - 100px);">
+                        @if (selectedArticle != null)
+                        {
+                            @if (selectedArticle.HelpSection?.Title == "Getting Started")
+                            {
+                                <div class="alert alert-primary mb-4 p-4 border-0 shadow-sm" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);">
+                                     <div class="d-flex align-items-center">
+                                         <i class="fas fa-rocket fa-3x text-primary mr-4"></i>
+                                         <div>
+                                             <h4 class="alert-heading text-primary font-weight-bold">Getting Started Guide</h4>
+                                             <p class="mb-0">Follow our guide to get faimilar with the Estimating Workflow System Module of the Copelin System quickly and efficiently.</p>
+                                         </div>
+                                     </div>
+                                </div>
+                            }
+
+                            <h2 class="mb-4">@selectedArticle.Title</h2>
+                            
+                            @if (!string.IsNullOrEmpty(selectedArticle.MediaUrl))
+                            {
+                                <div class="mb-4 text-center bg-light p-3 rounded">
+                            @if (selectedArticle.MediaType == "Image")
+                            {
+                                <img src="@selectedArticle.MediaUrl" class="img-fluid rounded shadow-sm" style="max-height: 400px;" alt="Help Image" />
+                            }
+                            else if (selectedArticle.MediaType == "Video")
+                            {
+                                @if (selectedArticle.MediaUrl.Contains("/uploads/"))
+                                {
+                                    <div class="embed-responsive embed-responsive-16by9" style="max-width: 800px; margin: 0 auto;" @key="@selectedArticle.Id">
+                                        <video controls class="embed-responsive-item">
+                                            <source src="@selectedArticle.MediaUrl" type="video/mp4">
+                                            Your browser does not support the video tag.
+                                        </video>
+                                    </div>
+                                }
+                                else 
+                                {
+                                    <!-- Legacy/Extra: YouTube Support -->
+                                    <div class="embed-responsive embed-responsive-16by9" style="max-width: 800px; margin: 0 auto;">
+                                        <iframe class="embed-responsive-item" src="@ConvertToEmbedUrl(selectedArticle.MediaUrl)" allowfullscreen></iframe>
+                                    </div>
+                                }
+                            }
+                                </div>
+                            }
+
+                            <div class="article-content">
+                                @((MarkupString)selectedArticle.Content)
+                            </div>
+                            
+                            <div class="mt-5 pt-3 border-top text-muted small">
+                                <span>Section: @selectedArticle.HelpSection?.Title</span>
+                            </div>
+                        }
+                        else if (!isLoading)
+                        {
+                            <div class="text-center py-5">
+                                <div class="jumbotron bg-transparent">
+                                    <i class="fas fa-book-reader fa-5x text-primary mb-4"></i>
+                                    <h1 class="display-4">Welcome to Help Center</h1>
+                                    <p class="lead">Select a topic from the sidebar to browse articles.</p>
+                                    <hr class="my-4">
+                                    <p class="text-muted">New here? Check out the <strong>Getting Started</strong> section!</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="alert alert-warning m-4">
+            <i class="fas fa-lock mr-2"></i> Please log in to view the Help Center.
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<HelpSection> sections = new();
+    private HelpArticle? selectedArticle;
+    private bool isLoading = true;
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await LoadHelpContent();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading help system: {ex.Message}";
+            Console.WriteLine(ex);
+        }
+    }
+
+    private async Task LoadHelpContent()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try 
+        {
+            sections = await HelpService.GetAllSectionsAsync();
+            
+            // Select first article by default if none selected
+            if (selectedArticle == null && sections.Any())
+            {
+                var firstSectionWithArticles = sections.FirstOrDefault(s => s.Articles.Any());
+                if (firstSectionWithArticles != null)
+                {
+                    selectedArticle = firstSectionWithArticles.Articles.OrderBy(a => a.Order).First();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+             errorMessage = $"Error fetching data: {ex.Message}";
+             // Keep sections empty
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void SelectArticle(HelpArticle article)
+    {
+        // Re-attach parent section if missing due to serialization/EF tracking quirks
+        if (article.HelpSection == null)
+        {
+            article.HelpSection = sections.FirstOrDefault(s => s.Id == article.HelpSectionId);
+        }
+        selectedArticle = article;
+    }
+
+    private string ConvertToEmbedUrl(string url)
+    {
+        if (string.IsNullOrEmpty(url)) return "";
+        
+        // Basic YouTube conversion: https://www.youtube.com/watch?v=VIDEO_ID -> https://www.youtube.com/embed/VIDEO_ID
+        // Also supports: https://youtu.be/VIDEO_ID
+        
+        if (url.Contains("youtube.com/watch?v="))
+        {
+            var videoId = url.Split("v=")[1];
+            var ampersandIndex = videoId.IndexOf('&');
+            if (ampersandIndex != -1)
+            {
+                videoId = videoId.Substring(0, ampersandIndex);
+            }
+            return $"https://www.youtube.com/embed/{videoId}";
+        }
+        else if (url.Contains("youtu.be/"))
+        {
+            var videoId = url.Split("youtu.be/")[1];
+             var ampersandIndex = videoId.IndexOf('?'); 
+             if(ampersandIndex != -1)
+             {
+                 videoId = videoId.Substring(0, ampersandIndex);
+             }
+            return $"https://www.youtube.com/embed/{videoId}";
+        }
+        
+        // Return original if not recognized (might be direct link to mp4 or other provider)
+        return url;
+    }
+}

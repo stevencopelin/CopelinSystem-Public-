@@ -1,0 +1,174 @@
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject ChecklistService ChecklistService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@using Microsoft.AspNetCore.Components.Authorization
+
+<div class="card card-outline card-primary">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-tasks mr-1"></i> Compliance Checklists / ISO Forms</h3>
+        <div class="card-tools">
+            <button class="btn btn-sm btn-primary" @onclick="CreateNewChecklist">
+                <i class="fas fa-plus"></i> New Checklist
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        @if (checklists == null)
+        {
+            <div class="p-3">Loading checklists...</div>
+        }
+        else if (!checklists.Any())
+        {
+            <div class="p-3 text-muted">No checklists started for this project.</div>
+        }
+        else
+        {
+            <table class="table table-striped projects">
+                <thead>
+                    <tr>
+                        <th style="width: 25%">Template</th>
+                        <th style="width: 20%">Status</th>
+                        <th>Progress</th>
+                        <th>Created</th>
+                        <th style="width: 15%">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var checklist in checklists)
+                    {
+                        <tr>
+                            <td>
+                                <a>@checklist.Template?.Name</a>
+                                <br />
+                                <small>@checklist.Template?.Category - @checklist.Template?.Version</small>
+                            </td>
+                            <td>
+                                <span class="badge @GetStatusBadge(checklist.Status)">@checklist.Status</span>
+                            </td>
+                            <td>
+                                @* Simple progress calculation if possible, else just placeholders *@
+                                <div class="progress progress-xs">
+                                    <div class="progress-bar bg-success" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </td>
+                            <td>
+                                <small>@checklist.CreatedDate.ToShortDateString()</small>
+                                <br />
+                                <small>By @checklist.CreatedBy</small>
+                            </td>
+                            <td class="project-actions text-right">
+                                <a class="btn btn-primary btn-sm" href="/projects/checklists/run/@checklist.ChecklistInstanceId">
+                                    <i class="fas fa-folder"></i> View / Run
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@if (isCreating)
+{
+    <div class="modal fade show" style="display:block; background-color: rgba(0,0,0,0.5);" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Start New Checklist</h5>
+                    <button type="button" class="close" @onclick="() => isCreating = false">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    @if (availableTemplates == null)
+                    {
+                        <p>Loading templates...</p>
+                    }
+                    else
+                    {
+                        <div class="form-group">
+                            <label>Select Template</label>
+                            <select class="form-control" @bind="selectedTemplateId">
+                                <option value="0">-- Select Template --</option>
+                                @foreach (var t in availableTemplates.Where(t => t.IsActive))
+                                {
+                                    <option value="@t.TemplateId">@t.Name (@t.Category)</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => isCreating = false">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="StartChecklist" disabled="@(selectedTemplateId == 0)">Start</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+
+    private List<ProjectChecklist>? checklists;
+    private List<ChecklistTemplate>? availableTemplates;
+    private bool isCreating = false;
+    private int selectedTemplateId;
+    private string currentUserName = "System";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity != null && user.Identity.IsAuthenticated)
+        {
+            currentUserName = user.Identity.Name ?? "System";
+            // Check for display name claim?
+            var displayName = user.FindFirst("DisplayName")?.Value;
+            if (!string.IsNullOrEmpty(displayName))
+            {
+                currentUserName = displayName;
+            }
+        }
+    }
+
+    private async Task LoadData()
+    {
+        checklists = await ChecklistService.GetProjectChecklistsAsync(ProjectId);
+    }
+
+    private async Task CreateNewChecklist()
+    {
+        availableTemplates = await ChecklistService.GetAllTemplatesAsync();
+        isCreating = true;
+    }
+
+    private async Task StartChecklist()
+    {
+        if (selectedTemplateId == 0) return;
+
+        var instance = await ChecklistService.StartChecklistAsync(ProjectId, selectedTemplateId, currentUserName);
+        isCreating = false;
+        selectedTemplateId = 0;
+        await LoadData();
+        
+        // Navigate strictly to run, or verify via list?
+        Navigation.NavigateTo($"/projects/checklists/run/{instance.ChecklistInstanceId}");
+    }
+
+    private string GetStatusBadge(string status)
+    {
+        return status switch
+        {
+            "Completed" => "badge-success",
+            "InProgress" => "badge-warning",
+            "Reviewed" => "badge-info",
+            _ => "badge-secondary"
+        };
+    }
+}

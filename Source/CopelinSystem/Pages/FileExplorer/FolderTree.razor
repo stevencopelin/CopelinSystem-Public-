@@ -1,0 +1,89 @@
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject FileSystemService FileService
+
+@if (folders != null)
+{
+    @foreach (var folder in folders)
+    {
+        <li class="tree-node">
+            <div class="node-content @(SelectedFolderId == folder.Id ? "selected" : "")"
+                 @onclick="() => OnSelect(folder)"
+                 @oncontextmenu="e => OnContext(e, folder)" @oncontextmenu:preventDefault="true">
+                 
+                <span class="expand-icon" @onclick="() => Toggle(folder)" @onclick:stopPropagation="true">
+                    <i class="fas @(expandedIds.Contains(folder.Id) ? "fa-folder-open" : "fa-folder") text-warning"></i>
+                </span>
+                <span class="node-text">@folder.Name</span>
+            </div>
+
+            @if (expandedIds.Contains(folder.Id))
+            {
+                <ul class="tree-children">
+                     <FolderTree ProjectId="@ProjectId" 
+                                 ParentId="@folder.Id" 
+                                 OnSelectFolder="@OnSelectFolder"
+                                 SelectedFolderId="@SelectedFolderId"
+                                 OnContextMenu="@OnContextMenu" />
+                </ul>
+            }
+        </li>
+    }
+}
+
+@code {
+    [Parameter] public int ProjectId { get; set; }
+    [Parameter] public int? ParentId { get; set; }
+    [Parameter] public EventCallback<FileSystemItem> OnSelectFolder { get; set; }
+    [Parameter] public int? SelectedFolderId { get; set; }
+    [Parameter] public EventCallback<ContextMenuEventArgs> OnContextMenu { get; set; }
+
+    private List<FileSystemItem> folders = new();
+    private HashSet<int> expandedIds = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFolders();
+    }
+    
+    public async Task Refresh()
+    {
+        await LoadFolders();
+        StateHasChanged();
+    }
+
+    private async Task LoadFolders()
+    {
+        var items = await FileService.GetItems(ProjectId, ParentId);
+        folders = items.Where(i => i.IsFolder).ToList();
+    }
+
+    private async Task Toggle(FileSystemItem folder)
+    {
+        if (expandedIds.Contains(folder.Id))
+        {
+            expandedIds.Remove(folder.Id);
+        }
+        else
+        {
+            expandedIds.Add(folder.Id);
+        }
+    }
+
+    private async Task OnSelect(FileSystemItem folder)
+    {
+        await OnSelectFolder.InvokeAsync(folder);
+    }
+    
+    private async Task OnContext(MouseEventArgs e, FileSystemItem folder)
+    {
+        await OnSelect(folder);
+        await OnContextMenu.InvokeAsync(new ContextMenuEventArgs 
+        { 
+            Type = SelectionType.Folder, 
+            Folder = folder, 
+            X = e.ClientX, 
+            Y = e.ClientY 
+        });
+    }
+}

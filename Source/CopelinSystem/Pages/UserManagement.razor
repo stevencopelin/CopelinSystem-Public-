@@ -1,0 +1,293 @@
+@page "/users"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject UserService UserService
+@inject EmployeeService EmployeeService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject AuthenticationService AuthService
+@inject PermissionService PermissionService
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>AD Management - Copelin Work Flow Management</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        @if (canManageUsers)
+        {
+            <div class="container-fluid mt-3">
+                <!-- Header -->
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <h3><i class="fas fa-shield-lock"></i> Active Directory Management</h3>
+                        <p class="text-muted">Manage user accounts and Active Directory credentials</p>
+                    </div>
+                </div>
+
+                <!-- Users Table -->
+                <div class="card">
+                    <div class="card-body">
+                        @if (users == null)
+                        {
+                            <p>Loading users...</p>
+                        }
+                        else if (!users.Any())
+                        {
+                            <p class="text-muted">No users found.</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Email</th>
+                                            <th>Region</th>
+                                            <th>Role</th>
+                                            <th>AD Username</th>
+                                            <th>Last Active</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var user in users)
+                                        {
+                                            <tr>
+                                                <td>@user.DisplayName</td>
+                                                <td>@user.Email</td>
+                                                <td>@(user.Region ?? "-")</td>
+                                                <td>
+                                                    <span class="badge badge-info">@user.Role.ToString()</span>
+                                                </td>
+                                                <td>
+                                                    @if (!string.IsNullOrEmpty(user.AdDomain) && !string.IsNullOrEmpty(user.AdUsername))
+                                                    {
+                                                        <code>@user.AdDomain\@user.AdUsername</code>
+                                                    }
+                                                    else
+                                                    {
+                                                        <code>@(user.AdUsername ?? "-")</code>
+                                                    }
+                                                </td>
+                                                <td>@(user.LastActive?.ToString("g") ?? "Never")</td>
+                                                <td>
+                                                    <button class="btn btn-sm btn-primary" @onclick="() => OpenEditModal(user)">
+                                                        <i class="fas fa-edit"></i> Edit
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Edit Modal -->
+                @if (showModal)
+                {
+                    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Edit User: @currentUserEdit.DisplayName</h5>
+                                    <button type="button" class="close" @onclick="CloseModal">
+                                        <span>&times;</span>
+                                    </button>
+                                </div>
+                                <div class="modal-body">
+                                    <!-- Personal Info -->
+                                    <h6 class="border-bottom pb-2 mb-3">Personal Information</h6>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label><strong>First Name</strong></label>
+                                                <input type="text" class="form-control" @bind="currentUserEdit.Firstname" />
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label><strong>Last Name</strong></label>
+                                                <input type="text" class="form-control" @bind="currentUserEdit.Lastname" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label><strong>Email</strong></label>
+                                        <input type="email" class="form-control" @bind="currentUserEdit.Email" />
+                                    </div>
+
+                                    <!-- System Access -->
+                                    <h6 class="border-bottom pb-2 mb-3 mt-4">System Access</h6>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label><strong>Role</strong></label>
+                                                <select class="form-control" @bind="userTypeInt">
+                                                    @foreach (UserRole role in Enum.GetValues(typeof(UserRole)))
+                                                    {
+                                                        <option value="@((int)(byte)role)">@role</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label><strong>Region</strong></label>
+                                                <input type="text" class="form-control" @bind="currentUserEdit.Region" placeholder="e.g., SWQ- South West Qld" />
+                                                <small class="text-muted">Used for regional filtering</small>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Active Directory -->
+                                    <h6 class="border-bottom pb-2 mb-3 mt-4">Active Directory Details</h6>
+                                    <div class="alert alert-warning">
+                                        <i class="fas fa-exclamation-triangle"></i> <strong>Warning:</strong> Changing these values may prevent the user from logging in. Ensure they match the AD configuration.
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label><strong>AD Domain</strong></label>
+                                                <input type="text" class="form-control" @bind="currentUserEdit.AdDomain" placeholder="e.g., COPELIN" />
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label><strong>AD Username</strong></label>
+                                                <input type="text" class="form-control" @bind="currentUserEdit.AdUsername" placeholder="e.g., jsmith" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label><strong>AD SID</strong></label>
+                                        <input type="text" class="form-control" @bind="currentUserEdit.AdSid" placeholder="Security Identifier" />
+                                        <small class="text-muted">The unique Security Identifier from Active Directory</small>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                                    <button type="button" class="btn btn-primary" @onclick="SaveUser">
+                                        <i class="fas fa-save"></i> Save Changes
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="text-center mt-5">
+                <h3>Access Denied</h3>
+                <p>You do not have permission to access this page.</p>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="text-center mt-5">
+            <h3>Please log in to access this page.</h3>
+            <a href="/login" class="btn btn-primary">Go to Login</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private User? currentUser;
+    private bool canManageUsers = false;
+    private List<User>? users;
+    private List<Region>? regions;
+    private bool showModal = false;
+    private User currentUserEdit = new();
+    private int userTypeInt;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId");
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                currentUser = await AuthService.GetUserById(userId);
+                if (currentUser != null)
+                {
+                    canManageUsers = await PermissionService.UserHasPermission(currentUser, "ManageUsers");
+                }
+            }
+        }
+
+        if (canManageUsers)
+        {
+            await LoadData();
+        }
+    }
+
+    private async Task LoadData()
+    {
+        users = await UserService.GetAllUsers();
+        regions = await EmployeeService.GetAllRegions();
+    }
+
+    private void OpenEditModal(User user)
+    {
+        // Clone the user to avoid editing the list directly
+        currentUserEdit = new User
+        {
+            UserId = user.UserId,
+            Firstname = user.Firstname,
+            Lastname = user.Lastname,
+            Email = user.Email,
+            Region = user.Region,
+            UserType = user.UserType,
+            AdUsername = user.AdUsername,
+            AdDomain = user.AdDomain,
+            AdSid = user.AdSid,
+            Avatar = user.Avatar,
+            DateCreated = user.DateCreated,
+            LastActive = user.LastActive
+        };
+        
+        // Convert byte UserType to int for dropdown binding
+        userTypeInt = currentUserEdit.UserType;
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        currentUserEdit = new();
+    }
+
+    private async Task SaveUser()
+    {
+        // Update role from int
+        currentUserEdit.UserType = (byte)userTypeInt;
+
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("Notifications.showConfirm", "Are you sure you want to save these changes? Changing AD details may affect login.");
+        if (confirmed)
+        {
+            await UserService.UpdateUser(currentUserEdit);
+            await LoadData();
+            CloseModal();
+            await JSRuntime.InvokeVoidAsync("Notifications.showSuccess", "User updated successfully!");
+        }
+    }
+
+    private string GetRoleBadgeClass(UserRole role)
+    {
+        return role switch
+        {
+            UserRole.Admin => "badge-danger",
+            UserRole.PrincipalEstimator => "badge-warning",
+            UserRole.Manager => "badge-info",
+            UserRole.Estimator => "badge-primary",
+            _ => "badge-secondary"
+        };
+    }
+}

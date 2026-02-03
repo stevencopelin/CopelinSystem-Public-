@@ -1,0 +1,469 @@
+@page "/admin/task-durations"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@using System.Text.Json
+@using System.Security.Claims
+@inject TaskConfigurationService TaskConfigService
+@inject ApplicationDbContext DbContext
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@using Microsoft.EntityFrameworkCore
+@rendermode InteractiveServer
+
+<AuthorizeView>
+    <Authorized>
+        @if (isAuthorized)
+        {
+            <div class="container-fluid mt-3">
+                <h3>Gantt Task Duration Management</h3>
+                <p class="text-muted">Configure standard task durations for your region</p>
+                
+                <div class="alert alert-warning" role="alert">
+                    <i class="fas fa-exclamation-triangle"></i> <strong>Important:</strong> 
+                    Changing these duration parameters will affect the <strong>Estimated Completion Date</strong> for all Projects. 
+                    This will impact projected timeline predictions and scheduling. Existing Projects prior to saving will be affected.
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label><strong>Region:</strong></label>
+                        @if (selectedRegionId > 0 && !showRegionSelector)
+                        {
+                            <div class="d-flex align-items-center">
+                                <p class="form-control-plaintext mb-0">@selectedRegionName</p>
+                                @if (currentRole == "Admin")
+                                {
+                                    <button type="button" class="btn btn-sm btn-link" @onclick="ShowRegionSelector">
+                                        <i class="fas fa-exchange-alt"></i> Change Region
+                                    </button>
+                                }
+                            </div>
+                        }
+                        else if (regions.Any())
+                        {
+                            <select class="form-control" @onchange="OnRegionChanged">
+                                <option value="0">-- Select a Region --</option>
+                                @foreach (var region in regions)
+                                {
+                                    <option value="@region.RegionId" selected="@(region.RegionId == selectedRegionId)">@region.RegionName</option>
+                                }
+                            </select>
+                        }
+                        else
+                        {
+                            <p class="text-muted">Loading regions...</p>
+                        }
+                    </div>
+                </div>
+
+                @if (selectedRegionId > 0)
+                {
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">Standard Task Durations</h5>
+                            <button type="button" class="btn btn-success btn-sm" @onclick="HandleSaveClick" disabled="@isSaving">
+                                <i class="fas fa-save"></i> @(isSaving ? "Saving..." : "Save All Changes")
+                            </button>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-striped mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 50%">Task Name</th>
+                                        <th style="width: 25%">Duration (Days)</th>
+                                        <th style="width: 25%">Type</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var task in standardTasks)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <strong>@task.TaskName</strong>
+                                                @if (task.TaskName == "Tender Management")
+                                                {
+                                                    <br/><small class="text-muted">Value-based task</small>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (task.IsValueBased)
+                                                {
+                                                    <button type="button" class="btn btn-sm btn-info" @onclick="() => HandleEditClick(task)">
+                                                        <i class="fas fa-edit"></i> Configure Thresholds
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <input type="number" class="form-control" @bind="task.Duration" min="1" max="365" />
+                                                }
+                                            </td>
+                                            <td>
+                                                <span class="badge @(task.IsValueBased ? "badge-info" : "badge-secondary")">
+                                                    @(task.IsValueBased ? "Value-Based" : "Fixed")
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    @if (saveMessage != null)
+                    {
+                        <div class="alert alert-success mt-3">
+                            <i class="fas fa-check-circle"></i> @saveMessage
+                        </div>
+                    }
+                }
+            </div>
+
+            @if (showModal)
+            {
+                <div class="modal fade show" style="display: block; background-color: rgba(0,0,0,0.5);" tabindex="-1" role="dialog">
+                    <div class="modal-dialog modal-lg" role="document">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Configure Value-Based Duration: @editingTask?.TaskName</h5>
+                                <button type="button" class="close" @onclick="CloseModal">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="alert alert-info">
+                                    <strong>Value-Based Durations:</strong> Define different durations based on project value thresholds.
+                                    The system will use the duration for the highest threshold that the project value meets or exceeds.
+                                </div>
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Project Value >= (Lower Limit)</th>
+                                            <th>Duration (Days)</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var threshold in tempThresholds)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <div class="input-group">
+                                                        <div class="input-group-prepend">
+                                                            <span class="input-group-text">$</span>
+                                                        </div>
+                                                        <input type="number" class="form-control" @bind="threshold.Limit" min="0" step="1000" />
+                                                    </div>
+                                                </td>
+                                                <td><input type="number" class="form-control" @bind="threshold.Days" min="1" max="365" /></td>
+                                                <td>
+                                                    <button type="button" class="btn btn-danger btn-sm" @onclick="@(() => RemoveThreshold(threshold))">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                                <button type="button" class="btn btn-secondary btn-sm" @onclick="AddThreshold">
+                                    <i class="fas fa-plus"></i> Add Threshold
+                                </button>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" @onclick="CloseModal">Close</button>
+                                <button type="button" class="btn btn-primary" @onclick="SaveValueBasedTask">Save Thresholds</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="alert alert-danger">
+                <h4>You are not authorized to view this page.</h4>
+                <p>Only Managers, Principal Estimators, and Admins can access this page.</p>
+                <p><strong>Your current role:</strong> @currentRole</p>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="alert alert-danger">Please log in to view this page.</div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private class TaskDurationModel
+    {
+        public int Id { get; set; }
+        public string TaskName { get; set; } = "";
+        public int Duration { get; set; }
+        public bool IsValueBased { get; set; }
+        public string? ValueThresholds { get; set; }
+    }
+
+    private List<Region> regions = new();
+    private List<TaskDurationModel> standardTasks = new();
+    private int selectedRegionId;
+    private string selectedRegionName = "";
+    private bool showModal = false;
+    private bool showRegionSelector = false;
+    private TaskDurationModel? editingTask = null;
+    private List<TaskConfigurationService.ValueThreshold> tempThresholds = new();
+    private bool isAuthorized = false;
+    private string currentRole = "Unknown";
+    private string userRegion = "";
+    private bool isSaving = false;
+    private string? saveMessage = null;
+
+    // Standard task names from the Gantt chart
+    private readonly string[] standardTaskNames = new[]
+    {
+        "Project Files & Documentation",
+        "Fee Proposal & Costing",
+        "Document Preparation",
+        "Project Scoping",
+        "Tender Management",
+        "Exception Management",
+        "Estimating Evaluation",
+        "Quote Issued",
+        "Quote Approved",
+        "Quote Received",
+        "Handover & Closeout"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check authorization
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var roleClaim = user.FindFirst(ClaimTypes.Role);
+            if (roleClaim != null)
+            {
+                currentRole = roleClaim.Value;
+                isAuthorized = roleClaim.Value == "Admin" || 
+                               roleClaim.Value == "PrincipalEstimator" || 
+                               roleClaim.Value == "Manager";
+            }
+            else
+            {
+                currentRole = "No Role Claim Found";
+            }
+            
+            // Get user's region
+            var regionClaim = user.FindFirst("Region");
+            if (regionClaim != null && !string.IsNullOrEmpty(regionClaim.Value))
+            {
+                userRegion = regionClaim.Value;
+            }
+        }
+        else
+        {
+            currentRole = "Not Authenticated";
+        }
+
+        if (isAuthorized)
+        {
+            regions = await DbContext.Regions.ToListAsync();
+            
+            // Auto-select user's region if available
+            if (!string.IsNullOrEmpty(userRegion))
+            {
+                var matchingRegion = regions.FirstOrDefault(r => r.RegionName == userRegion);
+                if (matchingRegion != null)
+                {
+                    selectedRegionId = matchingRegion.RegionId;
+                    selectedRegionName = matchingRegion.RegionName;
+                    await LoadTasks();
+                }
+            }
+        }
+    }
+
+    private void ShowRegionSelector()
+    {
+        showRegionSelector = true;
+    }
+
+    private async Task OnRegionChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int regionId) && regionId > 0)
+        {
+            selectedRegionId = regionId;
+            var region = regions.FirstOrDefault(r => r.RegionId == regionId);
+            selectedRegionName = region?.RegionName ?? "";
+            showRegionSelector = false;
+            await LoadTasks();
+        }
+        else
+        {
+            selectedRegionId = 0;
+            selectedRegionName = "";
+            standardTasks.Clear();
+        }
+    }
+
+    private async Task LoadTasks()
+    {
+        if (selectedRegionId <= 0) return;
+
+        // Get existing configurations from database
+        var existingConfigs = await TaskConfigService.GetConfigsByRegion(selectedRegionId);
+
+        // Create models for all standard tasks
+        standardTasks = new List<TaskDurationModel>();
+        
+        foreach (var taskName in standardTaskNames)
+        {
+            var existing = existingConfigs.FirstOrDefault(c => c.TaskName == taskName);
+            
+            standardTasks.Add(new TaskDurationModel
+            {
+                Id = existing?.Id ?? 0,
+                TaskName = taskName,
+                Duration = existing?.Duration ?? GetDefaultDuration(taskName),
+                IsValueBased = taskName == "Tender Management",
+                ValueThresholds = existing?.ValueThresholds
+            });
+        }
+    }
+
+    private int GetDefaultDuration(string taskName)
+    {
+        return taskName switch
+        {
+            "Project Files & Documentation" => 2,
+            "Fee Proposal & Costing" => 14,
+            "Document Preparation" => 2,
+            "Project Scoping" => 3,
+            "Tender Management" => 14,
+            "Exception Management" => 7,
+            "Estimating Evaluation" => 7,
+            "Quote Issued" => 5,
+            "Quote Approved" => 1,
+            "Quote Received" => 1,
+            "Handover & Closeout" => 7,
+            _ => 5
+        };
+    }
+
+    private void HandleEditClick(TaskDurationModel task)
+    {
+        EditValueBasedTask(task);
+    }
+
+    private async Task HandleSaveClick()
+    {
+        await SaveAllTasks();
+    }
+
+    private void EditValueBasedTask(TaskDurationModel task)
+    {
+        editingTask = task;
+        
+        if (!string.IsNullOrEmpty(task.ValueThresholds))
+        {
+            try
+            {
+                tempThresholds = JsonSerializer.Deserialize<List<TaskConfigurationService.ValueThreshold>>(task.ValueThresholds) 
+                    ?? new List<TaskConfigurationService.ValueThreshold>();
+            }
+            catch
+            {
+                tempThresholds = new List<TaskConfigurationService.ValueThreshold>();
+            }
+        }
+        else
+        {
+            // Default thresholds for Tender Management
+            tempThresholds = new List<TaskConfigurationService.ValueThreshold>
+            {
+                new TaskConfigurationService.ValueThreshold { Limit = 0, Days = 14 },
+                new TaskConfigurationService.ValueThreshold { Limit = 1000000, Days = 21 },
+                new TaskConfigurationService.ValueThreshold { Limit = 5000000, Days = 28 }
+            };
+        }
+        
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        editingTask = null;
+    }
+
+    private void AddThreshold()
+    {
+        tempThresholds.Add(new TaskConfigurationService.ValueThreshold());
+    }
+
+    private void RemoveThreshold(TaskConfigurationService.ValueThreshold threshold)
+    {
+        tempThresholds.Remove(threshold);
+    }
+
+    private void SaveValueBasedTask()
+    {
+        if (editingTask != null)
+        {
+            editingTask.ValueThresholds = JsonSerializer.Serialize(tempThresholds.OrderBy(t => t.Limit).ToList());
+        }
+        CloseModal();
+    }
+
+    private async Task SaveAllTasks()
+    {
+        isSaving = true;
+        saveMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            foreach (var task in standardTasks)
+            {
+                if (task.Id == 0)
+                {
+                    // Create new configuration
+                    var config = new TaskConfiguration
+                    {
+                        RegionId = selectedRegionId,
+                        TaskName = task.TaskName,
+                        Duration = task.Duration,
+                        IsValueBased = task.IsValueBased,
+                        ValueThresholds = task.ValueThresholds
+                    };
+                    await TaskConfigService.CreateConfig(config);
+                }
+                else
+                {
+                    // Update existing configuration
+                    var config = new TaskConfiguration
+                    {
+                        Id = task.Id,
+                        RegionId = selectedRegionId,
+                        TaskName = task.TaskName,
+                        Duration = task.Duration,
+                        IsValueBased = task.IsValueBased,
+                        ValueThresholds = task.ValueThresholds
+                    };
+                    await TaskConfigService.UpdateConfig(config);
+                }
+            }
+
+            saveMessage = "All task durations saved successfully!";
+            await LoadTasks(); // Reload to get updated IDs
+        }
+        catch (Exception ex)
+        {
+            saveMessage = $"Error saving: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+}

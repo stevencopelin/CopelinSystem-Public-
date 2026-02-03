@@ -1,0 +1,499 @@
+@page "/projects/prediction/{ProjectId:int}"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject ProjectService ProjectService
+@inject AuthenticationService AuthService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject TaskConfigurationService TaskConfigService
+@inject ApplicationDbContext DbContext
+@using Microsoft.EntityFrameworkCore
+
+<AuthorizeView>
+    <Authorized>
+        <div class="container-fluid mt-3">
+            @if (isLoading)
+            {
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+            }
+            else if (project == null)
+            {
+                <div class="alert alert-danger">
+                    Project not found.
+                </div>
+            }
+            else
+            {
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <h3>
+                            <a href="/projects/view/@ProjectId" class="btn btn-outline-secondary btn-sm mr-2">
+                                <i class="fas fa-arrow-left"></i> Back
+                            </a>
+                            Project Prediction: @project.ProjectName
+                        </h3>
+                    </div>
+                </div>
+
+                <div class="card card-primary card-outline card-tabs">
+                    <div class="card-header p-0 pt-1 border-bottom-0">
+                        <ul class="nav nav-tabs" id="prediction-tabs" role="tablist">
+                            <li class="nav-item">
+                                <a class="nav-link active" id="predicted-tab" data-toggle="pill" href="#predicted" role="tab" aria-controls="predicted" aria-selected="true">Predicted Timeline</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" id="actual-tab" data-toggle="pill" href="#actual" role="tab" aria-controls="actual" aria-selected="false">Actual Timeline</a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-end mb-3">
+                            <span class="mr-3"><i class="fas fa-square text-info"></i> Predicted / In Progress</span>
+                            <span class="mr-3"><i class="fas fa-square text-success"></i> Actual / Done</span>
+                            <span><i class="fas fa-square text-danger"></i> Pending / Overdue</span>
+                        </div>
+                        <div class="tab-content" id="prediction-tabs-content">
+                            <!-- Predicted Tab -->
+                            <div class="tab-pane fade show active" id="predicted" role="tabpanel" aria-labelledby="predicted-tab">
+                                <div class="callout callout-info">
+                                    <h5>Predicted Timeline</h5>
+                                    <p>Based on standard task durations starting from project creation date (@project.ProjectDateCreated.ToString("dd MMM yyyy")).</p>
+                                </div>
+                                @RenderGanttChart(predictedTasks, "predicted")
+                            </div>
+                            
+                            <!-- Actual Tab -->
+                            <div class="tab-pane fade" id="actual" role="tabpanel" aria-labelledby="actual-tab">
+                                <div class="callout callout-success">
+                                    <h5>Actual Timeline</h5>
+                                    <p>Based on actual task start and completion dates.</p>
+                                </div>
+                                @RenderGanttChart(actualGanttTasks, "actual")
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="text-center mt-5">
+            <h3>Please log in to view this page.</h3>
+            <a href="/login" class="btn btn-primary">Go to Login</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Parameter]
+    public int ProjectId { get; set; }
+
+    private ProjectList? project;
+    private List<TaskList>? actualTasks;
+    private bool isLoading = true;
+    private User? currentUser;
+
+    // Gantt Data Structures
+    private List<GanttTask> predictedTasks = new();
+    private List<GanttTask> actualGanttTasks = new();
+    
+    // Configuration
+    private int dayWidth = 60; // pixels per day
+    private DateTime chartStartDate;
+    private DateTime chartEndDate;
+    private int totalDays;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId");
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                currentUser = await AuthService.GetUserById(userId);
+                if (currentUser != null)
+                {
+                    await LoadProjectData();
+                }
+            }
+        }
+        else
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadProjectData()
+    {
+        try
+        {
+            project = await ProjectService.GetProjectById(ProjectId);
+            
+            if (project != null)
+            {
+                actualTasks = await ProjectService.GetProjectTasks(ProjectId);
+                
+                await CalculatePredictedTimeline();
+                CalculateActualTimeline();
+                
+                // Determine chart bounds (min start date to max end date across both charts)
+                var allTasks = predictedTasks.Concat(actualGanttTasks).ToList();
+                if (allTasks.Any())
+                {
+                    chartStartDate = allTasks.Min(t => t.StartDate).Date;
+                    chartEndDate = allTasks.Max(t => t.EndDate).Date.AddDays(5); // Add buffer
+                    totalDays = (int)(chartEndDate - chartStartDate).TotalDays + 1;
+                }
+                else
+                {
+                    chartStartDate = DateTime.Now.Date;
+                    chartEndDate = DateTime.Now.Date.AddDays(30);
+                    totalDays = 30;
+                }
+            }
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task CalculatePredictedTimeline()
+    {
+        if (project == null) return;
+        var p = project;
+
+        predictedTasks.Clear();
+        
+        // Get project value for thresholds
+        decimal? projectValue = null;
+        if (!string.IsNullOrEmpty(p.ProjectIndicative))
+        {
+            string cleanValue = new string(p.ProjectIndicative.Where(c => char.IsDigit(c) || c == '.').ToArray());
+            if (decimal.TryParse(cleanValue, out decimal val))
+            {
+                projectValue = val;
+            }
+        }
+
+        // Determine Region ID
+        int regionId = 0;
+        if (!string.IsNullOrEmpty(p.ProjectRegion))
+        {
+            var region = await DbContext.Regions.FirstOrDefaultAsync(r => r.RegionName == p.ProjectRegion);
+            if (region != null)
+            {
+                regionId = region.RegionId;
+            }
+        }
+
+        // Define standard tasks list (names only)
+        var taskNames = new List<string>
+        {
+            "Project Files & Documentation",
+            "Fee Proposal & Costing",
+            "Document Preparation",
+            "Project Scoping",
+            "Tender Management",
+            "Exception Management",
+            "Estimating Evaluation",
+            "Quote Issued",
+            "Quote Approved",
+            "Quote Received",
+            "Handover & Closeout"
+        };
+
+        // Start from Actual Work Start Date (earliest task start)
+        DateTime currentDate = await ProjectService.GetProjectActualStartDate(p.ProjectId);
+        
+        foreach (var name in taskNames)
+        {
+            // Get duration from service (handles defaults and value-based logic)
+            int duration = await TaskConfigService.GetTaskDuration(regionId, name, projectValue);
+            
+            var startDate = currentDate;
+            var endDate = currentDate.AddDays(duration);
+            
+            predictedTasks.Add(new GanttTask
+            {
+                Name = name,
+                StartDate = startDate,
+                EndDate = endDate,
+                Duration = duration,
+                Type = "predicted"
+            });
+            
+            // Sequential: Next task starts when this one ends
+            currentDate = endDate;
+        }
+    }
+
+    private void CalculateActualTimeline()
+    {
+        actualGanttTasks.Clear();
+        
+        if (actualTasks == null) return;
+
+        foreach (var task in actualTasks)
+        {
+            // Determine start date
+            DateTime startDate = task.DateCreated;
+            
+            // Determine end date and duration
+            DateTime endDate;
+            int duration;
+
+            if (task.Status == 3) // Done
+            {
+                // Use actual end date
+                endDate = task.DateEnded;
+                
+                // Use calculated duration if available, otherwise calculate it
+                if (task.EstimatedDays.HasValue && task.EstimatedDays > 0)
+                {
+                    duration = task.EstimatedDays.Value;
+                }
+                else
+                {
+                    duration = (int)Math.Ceiling((endDate - startDate).TotalDays);
+                    if (duration < 1) duration = 1;
+                }
+            }
+            else
+            {
+                // In progress or pending - assume at least 1 day or until now
+                endDate = DateTime.Now;
+                if (endDate < startDate) endDate = startDate.AddDays(1);
+                
+                duration = (int)Math.Ceiling((endDate - startDate).TotalDays);
+                if (duration < 1) duration = 1;
+            }
+
+            actualGanttTasks.Add(new GanttTask
+            {
+                Name = task.Task ?? "Unnamed Task",
+                StartDate = startDate,
+                EndDate = endDate,
+                Duration = duration,
+                Type = task.Status == 3 ? "actual" : (task.Status == 1 ? "predicted" : "overdue") // Reuse classes: actual=green, predicted=blue(in progress), overdue=red(pending/other)
+            });
+        }
+        
+        // Sort by start date
+        actualGanttTasks = actualGanttTasks.OrderBy(t => t.StartDate).ToList();
+    }
+
+    private RenderFragment RenderGanttChart(List<GanttTask> tasks, string type) => builder =>
+    {
+        if (!tasks.Any())
+        {
+            builder.AddMarkupContent(0, "<div class='alert alert-warning'>No data available for this timeline.</div>");
+            return;
+        }
+
+        // Calculate grid columns: 1st col for labels (fixed width), then 1 col per day
+        // We'll use a fixed width for the label column (e.g. 250px) and dayWidth for days
+        var gridTemplateColumns = $"250px repeat({totalDays}, {dayWidth}px)";
+        var totalWidth = 250 + (totalDays * dayWidth);
+
+        builder.OpenElement(1, "div");
+        builder.AddAttribute(2, "class", "gantt-scroll-container");
+        
+        builder.OpenElement(3, "div");
+        builder.AddAttribute(4, "class", "gantt-grid");
+        builder.AddAttribute(5, "style", $"grid-template-columns: {gridTemplateColumns}; min-width: {totalWidth}px;");
+
+        // --- Header Row ---
+        builder.OpenElement(6, "div");
+        builder.AddAttribute(7, "class", "gantt-header");
+        
+        // Empty cell for task labels
+        builder.OpenElement(8, "div");
+        builder.AddAttribute(9, "class", "gantt-header-cell");
+        builder.AddAttribute(10, "style", "grid-column: 1 / 2; grid-row: 1; position: sticky; left: 0; z-index: 20; background-color: #f8f9fa; border-right: 2px solid #dee2e6;");
+        builder.AddContent(11, "Task Name");
+        builder.CloseElement(); // div
+
+        // Day cells
+        for (int i = 0; i < totalDays; i++)
+        {
+            var date = chartStartDate.AddDays(i);
+            builder.OpenElement(12, "div");
+            builder.AddAttribute(13, "class", "gantt-header-cell");
+            builder.AddAttribute(14, "style", $"grid-column: {i + 2} / {i + 3}; grid-row: 1;");
+            builder.AddContent(15, date.ToString("dd/MM"));
+            builder.CloseElement(); // div
+        }
+        builder.CloseElement(); // div.gantt-header
+
+        // --- Task Rows ---
+        foreach (var task in tasks)
+        {
+            // Calculate grid position
+            // Start index is offset from chartStartDate
+            int startOffset = (int)(task.StartDate.Date - chartStartDate).TotalDays;
+            
+            // Ensure we don't go out of bounds (though chartStartDate should cover min)
+            if (startOffset < 0) startOffset = 0;
+            
+            // Grid column starts at 2 (1 is label) + offset
+            int gridColumnStart = 2 + startOffset;
+            int gridColumnSpan = task.Duration;
+            
+            // Row Container (using contents display)
+            builder.OpenElement(16, "div");
+            builder.AddAttribute(17, "class", "gantt-row");
+
+            // Task Label
+            builder.OpenElement(18, "div");
+            builder.AddAttribute(19, "class", "gantt-task-label");
+            builder.AddAttribute(20, "title", task.Name);
+            builder.AddContent(21, task.Name);
+            builder.CloseElement(); // div.gantt-task-label
+
+            // Task Bar Container (spans all days for this row to allow grid placement)
+            // Actually, we can just place the bar directly in the grid if we want, 
+            // but we need grid cells for the background lines.
+            // Let's render background cells first for this row? 
+            // CSS Grid "dense" packing or overlapping might be tricky with "display: contents".
+            // A simpler way for the background grid is to have it separate or use a background image.
+            // BUT, to keep it simple with the current CSS:
+            // We will render empty cells for the grid lines, AND the bar on top.
+            // However, placing items in the same grid area requires explicit positioning.
+            
+            // Alternative: Render the bar as a direct child of the grid, and use a separate background grid?
+            // Or, just let the bar float over the "row".
+            // Since we defined .gantt-row as display:contents, we can just output the cells.
+            
+            // Let's render the bar first (z-index higher)
+            builder.OpenElement(22, "div");
+            builder.AddAttribute(23, "class", $"gantt-bar {task.Type}");
+            builder.AddAttribute(24, "style", $"grid-column: {gridColumnStart} / span {gridColumnSpan}; grid-row: auto;");
+            builder.AddAttribute(25, "title", $"{task.Name}: {task.Duration} days ({task.StartDate:dd/MM} - {task.EndDate:dd/MM})");
+            
+            builder.OpenElement(26, "span");
+            builder.AddAttribute(27, "class", "gantt-bar-label");
+            builder.AddContent(28, $"{task.Duration}d");
+            builder.CloseElement(); // span
+            
+            builder.CloseElement(); // div.gantt-bar
+
+            // We need to render empty cells for the grid lines to appear?
+            // If we don't render cells, we won't have the vertical lines.
+            // But we can't easily render cells AND the bar in the same "row" flow without overlap issues 
+            // unless we use specific grid-row indices, which we don't want to manage manually.
+            // 
+            // TRICK: We can use a background repeating linear-gradient on the container for vertical lines!
+            // That saves us from rendering thousands of empty DOM nodes.
+            // Let's update the container style to include the grid lines.
+            
+            builder.CloseElement(); // div.gantt-row
+        }
+
+        // --- Current Day Highlight ---
+        var today = DateTime.Now.Date;
+        if (today >= chartStartDate && today <= chartEndDate)
+        {
+            int todayOffset = (int)(today - chartStartDate).TotalDays;
+            int gridColumn = 2 + todayOffset; // 2 because 1 is label column
+
+            builder.OpenElement(30, "div");
+            builder.AddAttribute(31, "class", "current-day-line");
+            // Span full height including header
+            builder.AddAttribute(32, "style", $"grid-column: {gridColumn} / {gridColumn + 1}; grid-row: 1 / -1;");
+            builder.AddAttribute(33, "title", "Today");
+            builder.CloseElement();
+        }
+
+        builder.CloseElement(); // div.gantt-grid
+        builder.CloseElement(); // div.gantt-scroll-container
+    };
+
+    private class GanttTask
+    {
+        public string Name { get; set; } = "";
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+        public int Duration { get; set; }
+        public string Type { get; set; } = "predicted"; // predicted, actual, overdue
+    }
+}
+
+<style>
+    .gantt-scroll-container {
+        overflow-x: auto;
+        padding-bottom: 1rem;
+    }
+
+    .gantt-grid {
+        display: grid;
+        /* Add grid lines via background gradient */
+        background-image: linear-gradient(to right, transparent 0px, transparent 59px, #f0f0f0 60px);
+        background-size: 60px 100%; /* Match dayWidth */
+        background-position: 250px 0; /* Offset by label column width */
+        position: relative;
+    }
+
+    .gantt-header, .gantt-row {
+        display: contents;
+    }
+
+    .gantt-header-cell {
+        padding: 5px;
+        font-weight: bold;
+        text-align: center;
+        font-size: 0.8rem;
+        white-space: nowrap;
+        overflow: hidden;
+        background-color: #f8f9fa;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    .gantt-task-label {
+        padding: 5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        border-right: 2px solid #dee2e6;
+        background-color: white;
+        position: sticky;
+        left: 0;
+        z-index: 10;
+    }
+
+    .gantt-bar {
+        margin-top: 5px;
+        margin-bottom: 5px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 0.75rem;
+        overflow: hidden;
+        white-space: nowrap;
+        z-index: 5;
+    }
+
+    .gantt-bar.predicted { background-color: #17a2b8; } /* Info */
+    .gantt-bar.actual { background-color: #28a745; } /* Success */
+    .gantt-bar.overdue { background-color: #dc3545; } /* Danger */
+
+    .gantt-bar-label {
+        padding: 0 5px;
+    }
+
+    .current-day-line {
+        background: linear-gradient(to bottom, rgba(255, 193, 7, 0.5) 0%, rgba(255, 193, 7, 0.1) 100%);
+        border-left: 2px solid #ffc107; /* Solid yellow line on the left edge */
+        z-index: 15; /* Above grid lines and headers */
+        pointer-events: none;
+    }
+</style>

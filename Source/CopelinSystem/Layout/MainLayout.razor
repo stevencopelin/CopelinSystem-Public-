@@ -1,0 +1,524 @@
+﻿@inherits LayoutComponentBase
+@using CopelinSystem.Services
+@using CopelinSystem.Models
+@inject AuthenticationStateProvider AuthStateProvider
+@inject AuthenticationService AuthService
+@inject PermissionService PermissionService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject IBrandingService BrandingService
+
+<style>
+    /* Ensure sub-menus show/hide based on Blazor state without AdminLTE JS intervention */
+    .nav-item > .nav-treeview {
+        display: none;
+    }
+    .nav-item.menu-open > .nav-treeview {
+        display: block !important;
+    }
+    
+    /* Ensure arrow icons rotate correctly based on Blazor state */
+    .nav-item .right.fas.fa-angle-left {
+        transition: transform 0.3s ease;
+    }
+    .nav-item.menu-open > a .right.fas.fa-angle-left {
+        transform: rotate(-90deg);
+    }
+
+    /* Sidebar Footer Logo Styles */
+    .sidebar-footer-logo {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        padding: 15px;
+        text-align: center;
+        background: rgba(0, 0, 0, 0.1);
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        z-index: 10;
+        transition: opacity 0.3s ease;
+    }
+    .sidebar-footer-logo img {
+        max-width: 150px;
+        height: auto;
+        opacity: 0.8;
+    }
+    .sidebar-footer-logo img:hover {
+        opacity: 1;
+    }
+    /* Hide logo when sidebar is collapsed */
+    .sidebar-collapse .sidebar-footer-logo {
+        display: none;
+    }
+    /* Add padding to the bottom of the navigation to ensure elements aren't hidden behind the logo */
+    .sidebar {
+        padding-bottom: 90px !important;
+    }
+</style>
+
+
+<AuthorizeView>
+    <Authorized>
+        <div class="wrapper">
+            <!-- Navbar -->
+            <nav class="main-header navbar navbar-expand navbar-dark navbar-flatly">
+                <!-- Left navbar links -->
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" data-widget="pushmenu" href="javascript:void(0)" role="button">
+                            <i class="fas fa-bars"></i>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="nav-link text-white" href="/" role="button">
+                            <large><b>@systemName</b></large>
+                        </a>
+                    </li>
+                </ul>
+
+                <ul class="navbar-nav ml-auto">
+                    <!-- Submission Notifications -->
+                    <SubmissionNotificationDropdown CanViewEstimatorTools="@canViewEstimatorTools" />
+
+                    <li class="nav-item">
+                        <a class="nav-link" id="fullscreen-btn" href="#" onclick="toggleFullScreen(); return false;" role="button" title="Fullscreen">
+                            <i class="fas fa-expand-arrows-alt"></i>
+                        </a>
+                    </li>
+
+                    <!-- Online Users Dropdown -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link" data-toggle="dropdown" href="javascript:void(0)" title="Who's Online">
+                            <i class="fa fa-users"></i>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-right p-2" style="min-width:200px;">
+                            <strong>Online Users</strong>
+                            <ul class="list-unstyled mb-0">
+                                @if (onlineUsers?.Any() == true)
+                                {
+                                    @foreach (var user in onlineUsers)
+                                    {
+                                        <li><i class="fa fa-user text-success"></i> @user.DisplayName</li>
+                                    }
+                                }
+                                else
+                                {
+                                    <li class="text-muted">No users online</li>
+                                }
+                            </ul>
+                        </div>
+                    </li>
+
+                    <!-- User Account Dropdown -->
+                    <li class="nav-item dropdown @(isUserMenuOpen ? "show" : "")">
+                        <a class="nav-link" href="javascript:void(0)" @onclick="ToggleUserMenu">
+                            <span>
+                                <div class="d-flex badge-pill">
+                                    <span class="fa fa-user"></span>
+                                    <span class="ml-2"><b>@currentUser?.Firstname</b></span>
+                                    <span class="fa fa-angle-down ml-2"></span>
+                                </div>
+                            </span>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-right @(isUserMenuOpen ? "show" : "")" @onclick="ToggleUserMenu">
+                            <a class="dropdown-item" href="/help">
+                                <i class="fa fa-question-circle"></i> Help System
+                            </a>
+                            <a class="dropdown-item" href="/logout">
+                                <i class="fa fa-power-off"></i> Logout
+                            </a>
+                        </div>
+                    </li>
+                </ul>
+            </nav>
+            <!-- /.navbar -->
+            <!-- Main Sidebar Container -->
+            <aside class="main-sidebar sidebar-dark-primary elevation-4">
+                <div class="dropdown">
+                    <a href="/" class="brand-link">
+                        <center>
+                            <h3 class="text-white">@GetUserInitials()</h3>
+                        </center>
+                    </a>
+                </div>
+
+                <div class="sidebar pb-4 mb-4">
+                    <nav class="mt-2">
+                        <ul class="nav nav-pills nav-sidebar flex-column nav-flat" role="menu" data-accordion="false">
+
+                            <!-- Dashboard -->
+                            <li class="nav-item">
+                                <a href="/" class="nav-link @(IsActive("/") ? "active" : "")">
+                                    <i class="nav-icon fas fa-tachometer-alt"></i>
+                                    <p>Dashboard</p>
+                                </a>
+                            </li>
+
+                            <!-- Project Explorer Dropdown -->
+                            <li class="nav-item @(isProjectMenuOpen ? "menu-open" : "")">
+                                <a href="javascript:void(0)" class="nav-link @(IsProjectExplorerActive() ? "active" : "")" @onclick="ToggleProjectMenu">
+                                    <i class="nav-icon fas fa-list"></i>
+                                    <p>
+                                        Projects
+                                        <i class="right fas fa-angle-left"></i>
+                                    </p>
+                                </a>
+                                <ul class="nav nav-treeview" style="@(isProjectMenuOpen ? "display: block;" : "display: none;")">
+                                    <li class="nav-item">
+                                        <a href="/projects" class="nav-link @(IsActive("/projects") ? "active" : "")">
+                                            <i class="fas fa-table nav-icon"></i>
+                                            <p>Project Explorer</p>
+                                        </a>
+                                    </li>
+                                    @if (canCreateProjects)
+                                    {
+                                        <li class="nav-item">
+                                            <a href="/projects/add" class="nav-link @(IsActive("/projects/add") ? "active" : "")">
+                                                <i class="fas fa-plus nav-icon"></i>
+                                                <p>Add Project</p>
+                                            </a>
+                                        </li>
+                                    }
+                                </ul>
+                            </li>
+
+                            <!-- Reports -->
+                            @if (canViewReports)
+                            {
+                                <li class="nav-item">
+                                    <a href="/reports" class="nav-link @(IsActive("/reports") ? "active" : "")">
+                                        <i class="nav-icon fas fa-chart-pie"></i>
+                                        <p>Reports</p>
+                                    </a>
+                                </li>
+                            }
+
+                            <!-- Estimator Tools -->
+                            @if (canViewEstimatorTools)
+                            {
+                                <li class="nav-item @(isEstimatorToolsMenuOpen ? "menu-open" : "")">
+                                    <a href="javascript:void(0)" class="nav-link @(IsEstimatorToolsActive() ? "active" : "")" @onclick="ToggleEstimatorToolsMenu">
+                                        <i class="nav-icon fas fa-chart-bar"></i>
+                                        <p>
+                                            Estimator Tools
+                                            <i class="right fas fa-angle-left"></i>
+                                        </p>
+                                    </a>
+                                    <ul class="nav nav-treeview" style="@(isEstimatorToolsMenuOpen ? "display: block;" : "display: none;")">
+                                        <li class="nav-item">
+                                            <a href="/estimator-tools" class="nav-link @(IsActive("/estimator-tools") ? "active" : "")">
+                                                <i class="fas fa-chart-line nav-icon"></i>
+                                                <p>Workloads</p>
+                                            </a>
+                                        </li>
+                                        <li class="nav-item">
+                                            <a href="/estimator-tools/contracts" class="nav-link @(IsActive("/estimator-tools/contracts") ? "active" : "")">
+                                                <i class="fas fa-file-contract nav-icon"></i>
+                                                <p>Contracts</p>
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </li>
+                            }
+
+                            
+                            <!-- User Management Dropdown (Admin/Manager/Principal) -->
+                        @if (canManageUsers || canManageEmployees || canManageClients || canManageConsultants || canManageContractors || canManageExternalRegion)
+                        {
+                            <li class="nav-item @(isManagementMenuOpen ? "menu-open" : "")">
+                                <a href="javascript:void(0)" class="nav-link @(IsManagementActive() ? "active" : "")" @onclick="ToggleManagementMenu">
+                                    <i class="nav-icon fas fa-users-cog"></i>
+                                    <p>
+                                        Management
+                                        <i class="right fas fa-angle-left"></i>
+                                    </p>
+                                </a>
+                                <ul class="nav nav-treeview" style="@(isManagementMenuOpen ? "display: block;" : "display: none;")">
+                                    @if (canManageEmployees)
+                                    {
+                                        <li class="nav-item">
+                                            <a href="/employees" class="nav-link">
+                                                <i class="fas fa-user-tie nav-icon"></i>
+                                                <p>Employees</p>
+                                            </a>
+                                        </li>
+                                    }
+                                    @if (canManageUsers)
+                                    {
+                                        <li class="nav-item">
+                                            <a href="/users" class="nav-link">
+                                                <i class="fas fa-users nav-icon"></i>
+                                                <p>Users</p>
+                                            </a>
+                                        </li>
+                                        <li class="nav-item">
+                                            <a href="/permissions" class="nav-link">
+                                                <i class="fas fa-user-shield nav-icon"></i>
+                                                <p>Permissions</p>
+                                            </a>
+                                        </li>
+                                    }
+                                    
+                                    @if (canManageClients)
+                                    {
+                                        <li class="nav-item">
+                                            <a href="/clients" class="nav-link">
+                                                <i class="fas fa-building nav-icon"></i>
+                                                <p>Clients</p>
+                                            </a>
+                                        </li>
+                                    }
+                                    @if (canManageConsultants)
+                                    {
+                                        <li class="nav-item">
+                                            <a href="/consultants" class="nav-link">
+                                                <i class="fas fa-hard-hat nav-icon"></i>
+                                                <p>Consultants</p>
+                                            </a>
+                                        </li>
+                                    }
+                                    @if (canManageContractors)
+                                    {
+                                        <li class="nav-item">
+                                            <a href="/contractors" class="nav-link">
+                                                <i class="fas fa-truck nav-icon"></i>
+                                                <p>Contractors</p>
+                                            </a>
+                                        </li>
+                                    }
+                                    
+                                    @if (canManageTaskDurations)
+                                    {
+                                        <li class="nav-item">
+                                            <a href="/admin/task-durations" class="nav-link">
+                                                <i class="fas fa-clock nav-icon"></i>
+                                                <p>Gantt Durations</p>
+                                            </a>
+                                        </li>
+                                    }
+
+                                    @if (canViewEstimatorTools)
+                                    {
+                                        <li class="nav-item">
+                                            <a href="/admin/iso-forms" class="nav-link">
+                                                <i class="fas fa-clipboard-list nav-icon"></i>
+                                                <p>ISO Form Templates</p>
+                                            </a>
+                                        </li>
+                                    }
+
+                                    @if (canManageExternalRegion)
+                                    {
+                                        <li class="nav-item">
+                                            <a href="/admin/external-region" class="nav-link">
+                                                <i class="fas fa-at nav-icon"></i>
+                                                <p>Region Emails</p>
+                                            </a>
+                                        </li>
+                                    }
+                                    
+                                    @if (canManageHelp)
+                                    {
+                                        <li class="nav-item">
+                                            <a href="/help/admin" class="nav-link">
+                                                <i class="fas fa-question-circle nav-icon"></i>
+                                                <p>Help Admin</p>
+                                            </a>
+                                        </li>
+                                    }
+                                </ul>
+                            </li>
+                        }    
+
+
+                        </ul>
+                    </nav>
+                </div>
+                <!-- Sidebar Footer Logo -->
+                <div class="sidebar-footer-logo">
+                    <img src="uploads/logo/Queensland-Government-Logo.png" alt="Queensland Government Logo" />
+                </div>
+            </aside>
+
+            <!-- Content Wrapper -->
+            <div class="content-wrapper">
+                <div class="content">
+                    @Body
+                </div>
+            </div>
+
+            <!-- Footer -->
+            @((MarkupString)footerHtml)
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="container py-5">
+            <div class="row justify-content-center">
+                <div class="col-md-6">
+                    <div class="card shadow">
+                        <div class="card-body text-center py-5">
+                            <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+                            <h3>Authentication Required</h3>
+                            <p class="text-muted">Please authenticate with Windows to access this application.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private User? currentUser;
+    private List<User>? onlineUsers;
+    private string systemName = "Estimating Work Flow System";
+    private string currentPath = "";
+    private string footerHtml = "";
+
+    private bool canManageUsers = false;
+    private bool canManageEmployees = false;
+    private bool canManageClients = false;
+    private bool canManageConsultants = false;
+    private bool canManageContractors = false;
+    private bool canCreateProjects = false;
+    private bool canManageTaskDurations = false;
+    private bool canManageExternalRegion = false;
+    private bool canViewReports = false;
+    private bool canViewEstimatorTools = false;
+
+    private bool canManageHelp = false;
+
+    private bool isManagementMenuOpen = false;
+    private bool isProjectMenuOpen = false;
+    private bool isEstimatorToolsMenuOpen = false;
+    private bool isUserMenuOpen = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        footerHtml = await BrandingService.GetFooterBrandingAsync();
+
+        // Get online users (active in last 15 minutes)
+        onlineUsers = await AuthService.GetAllUsers();
+        onlineUsers = onlineUsers
+            .Where(u => u.LastActive.HasValue &&
+                        u.LastActive.Value > DateTime.Now.AddMinutes(-15))
+            .ToList();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        currentPath = Navigation.Uri.Replace(Navigation.BaseUri, "/");
+        if (!currentPath.StartsWith("/")) currentPath = "/" + currentPath;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId");
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                currentUser = await AuthService.GetUserById(userId);
+                if (currentUser != null)
+                {
+                    canManageUsers = await PermissionService.UserHasPermission(currentUser, "ManageUsers");
+                    canManageEmployees = await PermissionService.UserHasPermission(currentUser, "ManageEmployees");
+                    canManageClients = await PermissionService.UserHasPermission(currentUser, "ManageClients");
+                    canManageConsultants = await PermissionService.UserHasPermission(currentUser, "ManageConsultants");
+                    canManageContractors = await PermissionService.UserHasPermission(currentUser, "ManageContractors");
+                    canCreateProjects = await PermissionService.UserHasPermission(currentUser, "CreateProjects");
+                    canManageTaskDurations = await PermissionService.UserHasPermission(currentUser, "ManageTaskDurations");
+                    canManageExternalRegion = await PermissionService.UserHasPermission(currentUser, "ManageExternalRegion");
+                    canViewReports = await PermissionService.UserHasPermission(currentUser, "ViewReports");
+                    canViewEstimatorTools = await PermissionService.UserHasPermission(currentUser, "ViewEstimatorTools");
+                    canManageHelp = await PermissionService.UserHasPermission(currentUser, "ManageHelp");
+                }
+            }
+        }
+
+        // Initialize menu state based on current URL
+        if (IsManagementActive())
+        {
+            isManagementMenuOpen = true;
+        }
+        if (IsProjectExplorerActive())
+        {
+            isProjectMenuOpen = true;
+        }
+        if (IsEstimatorToolsActive())
+        {
+            isEstimatorToolsMenuOpen = true;
+        }
+    }
+
+    private string GetUserInitials()
+    {
+        if (currentUser == null) return "??";
+
+        var names = currentUser.DisplayName.Split(' ');
+        var initials = "";
+        foreach (var name in names)
+        {
+            if (!string.IsNullOrEmpty(name))
+                initials += name[0].ToString().ToUpper();
+        }
+        return initials;
+    }
+
+
+
+    private bool IsManagementActive()
+    {
+        return IsActive("/employees") || 
+               IsActive("/users") || 
+               IsActive("/permissions") || 
+               IsActive("/clients") || 
+               IsActive("/consultants") || 
+               IsActive("/contractors") || 
+               IsActive("/admin/task-durations") || 
+               IsActive("/admin/external-region") || 
+               IsActive("/admin/iso-forms") ||
+               IsActive("/help/admin");
+    }
+
+    private bool IsProjectExplorerActive()
+    {
+         return IsActive("/projects") || IsActive("/projects/add"); 
+    }
+
+    private bool IsEstimatorToolsActive()
+    {
+        return IsActive("/estimator-tools") || IsActive("/estimator-tools/contracts");
+    }
+
+    private bool IsActive(string path)
+    {
+        return currentPath.Equals(path, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsParentActive(string path)
+    {
+        return currentPath.StartsWith(path, StringComparison.OrdinalIgnoreCase);
+    }
+
+    
+    private void ToggleManagementMenu()
+    {
+        isManagementMenuOpen = !isManagementMenuOpen;
+    }
+
+    private void ToggleProjectMenu()
+    {
+        isProjectMenuOpen = !isProjectMenuOpen;
+    }
+
+    private void ToggleEstimatorToolsMenu()
+    {
+        isEstimatorToolsMenuOpen = !isEstimatorToolsMenuOpen;
+    }
+
+    private void ToggleUserMenu()
+    {
+        isUserMenuOpen = !isUserMenuOpen;
+    }
+}

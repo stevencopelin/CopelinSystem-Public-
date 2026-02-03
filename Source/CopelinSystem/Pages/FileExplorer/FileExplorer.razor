@@ -1,0 +1,409 @@
+@page "/files"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.Extensions.Caching.Memory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject AuthenticationService AuthService
+@inject FileSystemService FileService
+@inject IJSRuntime JSRuntime
+@inject IMemoryCache Cache
+@rendermode InteractiveServer
+
+<PageTitle>Project Files - Copelin Work Flow Management</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="row h-100 no-gutters">
+            <!-- Sidebar / Tree View -->
+            <div class="col-md-3 border-right h-100 sidebar-container">
+                <div class="p-2 bg-light border-bottom">
+                    <strong><i class="fas fa-project-diagram"></i> Tree View</strong>
+                </div>
+                <div class="tree-content px-2 py-2">
+                    <TreeView CurrentUser="@currentUser" 
+                              InitialProjectId="@ProjectId"
+                              OnSelectionChanged="HandleSelection"
+                              OnContextMenu="ShowContextMenu"
+                              @ref="treeView" />
+                </div>
+            </div>
+
+            <!-- Main Content / File List -->
+            <div class="col-md-9 h-100 d-flex flex-column main-container">
+                <div class="p-2 border-bottom d-flex justify-content-between align-items-center bg-white">
+                    <!-- Left: Title or Project Name -->
+                    <div class="d-flex align-items-center" style="min-width: 0; margin-right: 1rem;">
+                        @if (currentProject != null)
+                        {
+                            <h5 class="m-0 text-truncate">
+                                <i class="fas fa-building text-info mr-2"></i> @currentProject.ProjectName
+                            </h5>
+                        }
+                        else
+                        {
+                            <h5 class="m-0">
+                                @if (IsSearching) { <span class="text-primary"><i class="fas fa-search"></i> Search Results</span> }
+                                else { <span>File Explorer</span> }
+                            </h5>
+                        }
+                    </div>
+
+                    <!-- Right: Actions & Search -->
+                    <div class="d-flex align-items-center">
+                        @if (currentProject != null)
+                        {
+                            <a href="/projects/view/@currentProject.ProjectId" class="btn btn-outline-secondary btn-sm mr-2">
+                                <i class="fas fa-arrow-left"></i> Back
+                            </a>
+                        
+                            @if (CanUpload && !IsSearching)
+                            {
+                                <label class="btn btn-primary btn-sm m-0 mr-1 cursor-pointer">
+                                    <i class="fas fa-upload"></i> Upload
+                                    <InputFile OnChange="HandleFileUpload" multiple hidden />
+                                </label>
+                                <button class="btn btn-default btn-sm mr-1" @onclick="CreateNewFolder">
+                                    <i class="fas fa-folder-plus"></i> New Folder
+                                </button>
+                            }
+                            
+                            <button class="btn btn-default btn-sm mr-2" @onclick="RefreshCurrentView">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                        }
+
+                        <!-- Search Bar -->
+                        <div class="input-group input-group-sm" style="width: 200px;">
+                            <input type="text" class="form-control" placeholder="Search files..." @bind="SearchTerm" @bind:event="oninput" @onkeyup="HandleSearchKey">
+                            <div class="input-group-append">
+                                <button class="btn btn-outline-secondary" type="button" @onclick="PerformSearch">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex-grow-1 overflow-auto p-0">
+                   <FileListView ProjectId="@selectedProjectId" 
+                                 ParentId="@selectedFolderId"
+                                 Breadcrumb="@breadcrumbPath"
+                                 SearchResults="@SearchResults"
+                                 OnNavigate="HandleSelection"
+                                 OnContextMenu="ShowContextMenu"
+                                 @ref="fileListView" />
+                </div>
+            </div>
+        </div>
+        
+        <ContextMenu @ref="contextMenu" />
+        <CopelinSystem.Shared.FileViewerModal @ref="fileViewer" />
+        
+    </Authorized>
+    <NotAuthorized>
+        <div class="text-center mt-5">
+            <h3>Please log in to view files.</h3>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+<style>
+    .sidebar-container {
+        height: calc(100vh - 57px); /* Adjust based on navbar height */
+        overflow-y: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    .tree-content {
+        flex-grow: 1;
+        overflow-y: auto;
+    }
+    .main-container {
+         height: calc(100vh - 57px);
+    }
+    
+    /* Make InputFile label work like button */
+    .cursor-pointer { cursor: pointer; }
+</style>
+
+@code {
+    [SupplyParameterFromQuery]
+    public int? ProjectId { get; set; }
+
+    private User currentUser = new();
+    private ProjectList? currentProject;
+    private int? selectedProjectId;
+    private int? selectedFolderId;
+    private string breadcrumbPath = "";
+    
+    private TreeView? treeView;
+    private FileListView? fileListView;
+    private ContextMenu? contextMenu;
+    private CopelinSystem.Shared.FileViewerModal? fileViewer;
+
+    private bool CanUpload => currentProject != null; // Simplified logic
+    
+    private string SearchTerm = "";
+    private List<FileSystemSearchItem>? SearchResults;
+    private bool IsSearching => SearchResults != null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            var userIdStr = authState.User.FindFirst("UserId")?.Value;
+             if (int.TryParse(userIdStr, out int userId))
+            {
+                currentUser = await AuthService.GetUserById(userId) ?? new User();
+            }
+        }
+    }
+
+    private string GenerateToken()
+    {
+        var token = Guid.NewGuid().ToString("N");
+        Cache.Set(token, currentUser.UserId, TimeSpan.FromMinutes(2));
+        return token;
+    }
+    
+    private void OpenFile(FileSystemItem file)
+    {
+         var token = GenerateToken();
+         fileViewer?.Show(file, token);
+    }
+
+    private async Task PerformSearch()
+    {
+        if (string.IsNullOrWhiteSpace(SearchTerm))
+        {
+            SearchResults = null;
+            return;
+        }
+
+        try 
+        {
+            SearchResults = await FileService.SearchFileSystem(SearchTerm, currentUser);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("Notifications.showError", "Search failed: " + ex.Message);
+        }
+        
+        currentProject = null;
+        selectedProjectId = null;
+        selectedFolderId = null;
+        breadcrumbPath = $"Search: {SearchTerm}";
+    }
+
+    private async Task HandleSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await PerformSearch();
+        }
+    }
+
+    private void HandleSelection(SelectionEventArgs args)
+    {
+        contextMenu?.Hide();
+        
+        // Search results handling only if not strict selection
+        if (args.Type != SelectionType.File)
+        {
+            SearchResults = null;
+            SearchTerm = "";
+        }
+        
+        switch (args.Type)
+        {
+            case SelectionType.Region:
+                currentProject = null;
+                selectedProjectId = null;
+                selectedFolderId = null;
+                breadcrumbPath = args.Region!;
+                break;
+
+            case SelectionType.FinancialYear:
+                currentProject = null;
+                selectedProjectId = null;
+                selectedFolderId = null;
+                breadcrumbPath = $"{args.Region} > {args.FinancialYear}";
+                break;
+
+            case SelectionType.Location:
+                currentProject = null;
+                selectedProjectId = null;
+                selectedFolderId = null;
+                breadcrumbPath = $"{args.Region} > {args.FinancialYear} > {args.Location}";
+                break;
+
+            case SelectionType.Project:
+                currentProject = args.Project;
+                selectedProjectId = args.Project?.ProjectId;
+                selectedFolderId = null;
+                
+                var reg = args.Project?.ProjectRegion ?? "Unassigned";
+                var loc = args.Project?.ProjectLocation != null ? args.Project.ProjectLocation : "Unassigned Location";
+                var fy = FileService.GetFinancialYear(args.Project!.ProjectDateCreated);
+                
+                // New: reg > fy > loc > name
+                breadcrumbPath = $"{reg} > {fy} > {loc} > {args.Project?.ProjectName}";
+                break;
+
+            case SelectionType.Folder:
+                if (args.Folder != null)
+                {
+                    if (currentProject == null || currentProject.ProjectId != args.Folder.ProjectId)
+                    {
+                         selectedProjectId = args.Folder.ProjectId;
+                    }
+                    selectedFolderId = args.Folder.Id;
+                    
+                    if (!breadcrumbPath.Contains(args.Folder.Name))
+                         breadcrumbPath += $" > {args.Folder.Name}";
+                }
+                break;
+                
+            case SelectionType.File:
+                if (args.Folder != null)
+                {
+                    OpenFile(args.Folder);
+                }
+                break;
+        }
+    }
+    
+    private void ShowContextMenu(ContextMenuEventArgs args)
+    {
+        var items = new List<ContextMenu.ContextMenuItem>();
+        
+        if (args.Type == SelectionType.Project && args.Project != null)
+        {
+             items.Add(new ContextMenu.ContextMenuItem 
+             { 
+                Text = "New Folder", 
+                Icon = "fas fa-folder-plus", 
+                ActionAsync = async () => await CreateNewFolderWithParent(args.Project.ProjectId, null)
+             });
+        }
+        else if (args.Type == SelectionType.Folder && args.Folder != null)
+        {
+            var folder = args.Folder;
+             items.Add(new ContextMenu.ContextMenuItem 
+             { 
+                Text = "New Subfolder", 
+                Icon = "fas fa-folder-plus", 
+                ActionAsync = async () => await CreateNewFolderWithParent(folder.ProjectId, folder.Id)
+             });
+             items.Add(new ContextMenu.ContextMenuItem 
+             { 
+                Text = "Rename", 
+                Icon = "fas fa-edit", 
+                Action = () => fileListView?.StartRename(folder)
+             });
+             items.Add(new ContextMenu.ContextMenuItem 
+             { 
+                Text = "Delete", 
+                Icon = "fas fa-trash text-danger", 
+                ActionAsync = async () => await DeleteItem(folder)
+             });
+        }
+        else if (args.Type == SelectionType.File && args.Folder != null) 
+        {
+             var file = args.Folder; 
+             
+             items.Add(new ContextMenu.ContextMenuItem 
+             { 
+                Text = "View / Download", 
+                Icon = "fas fa-eye", 
+                Action = () => OpenFile(file)
+             });
+             
+             items.Add(new ContextMenu.ContextMenuItem 
+             { 
+                Text = "Rename", 
+                Icon = "fas fa-edit", 
+                Action = () => fileListView?.StartRename(file)
+             });
+             items.Add(new ContextMenu.ContextMenuItem 
+             { 
+                Text = "Delete", 
+                Icon = "fas fa-trash text-danger", 
+                ActionAsync = async () => await DeleteItem(file)
+             });
+        }
+
+        contextMenu?.Show(args.X, args.Y, items);
+    }
+    
+    private async Task CreateNewFolder()
+    {
+        if (selectedProjectId == null) return;
+        await CreateNewFolderWithParent(selectedProjectId.Value, selectedFolderId);
+    }
+    
+    private async Task CreateNewFolderWithParent(int projectId, int? parentId)
+    {
+        var name = await JSRuntime.InvokeAsync<string>("prompt", "Enter folder name:", "New Folder");
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            try 
+            {
+                if (currentUser == null || currentUser.UserId == 0) return;
+
+                await FileService.CreateFolder(projectId, parentId, name, currentUser.UserId.ToString());
+                await RefreshCurrentView();
+                if (treeView != null) await treeView.RefreshFolder(projectId);
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("Notifications.showError", "Failed to create folder: " + ex.Message);
+            }
+        }
+    }
+    
+    private async Task HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        if (selectedProjectId == null) return;
+        
+        var files = e.GetMultipleFiles(10);
+        try 
+        {
+            foreach (var file in files)
+            {
+                await FileService.UploadFile(selectedProjectId.Value, selectedFolderId, file, currentUser.UserId.ToString());
+            }
+            await RefreshCurrentView();
+            await JSRuntime.InvokeVoidAsync("Notifications.showSuccess", $"{files.Count} files uploaded successfully.");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("Notifications.showError", "Upload failed: " + ex.Message);
+        }
+    }
+    
+    private async Task DeleteItem(FileSystemItem item)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete '{item.Name}'? This cannot be undone.");
+        if (confirmed)
+        {
+            try 
+            {
+                await FileService.DeleteItem(item.Id);
+                await RefreshCurrentView();
+                if (treeView != null && item.IsFolder) await treeView.RefreshFolder(item.ProjectId);
+            }
+             catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("Notifications.showError", "Delete failed: " + ex.Message);
+            }
+        }
+    }
+
+    private async Task RefreshCurrentView()
+    {
+        if (fileListView != null) await fileListView.LoadItems();
+    }
+}

@@ -1,0 +1,473 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@using System.Linq
+@inject ProjectService ProjectService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject AuthenticationService AuthService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<AuthorizeView>
+    <Authorized>
+        <div class="container-fluid mt-3">
+            <!-- KPI Widgets -->
+            <div class="row">
+                <!-- In Progress Projects -->
+                
+                <div class="col-lg col-6">
+                    <div class="small-box bg-success">
+                        <div class="inner">
+                            <h3>@inProgressProjectsCount</h3>
+                            <p>Projects 'In-Progress' </p>
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-layer-group"></i>
+                        </div>
+                    </div>
+                </div>
+                <!-- Region Tasks -->
+                <div class="col-lg col-6">
+                    <div class="small-box bg-danger">
+                        <div class="inner">
+                            <h3>@regionTasksCount</h3>
+                            <p>Region Tasks</p>
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-tasks"></i>
+                        </div>
+                    </div>
+                </div>
+                <!-- Tasks in Progress -->
+                <div class="col-lg col-6">
+                    <div class="small-box bg-warning">
+                        <div class="inner">
+                            <h3>@inProgressTasksCount</h3>
+                            <p>Tasks In-Progress</p>
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-list-ul"></i>
+                        </div>
+                    </div>
+                </div>
+                <!-- Revenue -->
+                <div class="col-lg col-6">
+                    <div class="small-box bg-info">
+                        <div class="inner">
+                            <h3>@financialYearRevenue.ToString("N2")</h3>
+                            <p>(01 Jul @fyStartYear - 30 Jun @fyEndYear)</p>
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-dollar-sign"></i>
+                        </div>
+                    </div>
+                </div>
+                <!-- Emails & Attachments -->
+                <div class="col-lg col-6">
+                    <div class="small-box bg-primary">
+                        <div class="inner">
+                            <h3>@emailsAndFilesCount</h3>
+                            <p>Emails & Attachments</p>
+                        </div>
+                        <div class="icon">
+                            <i class="fas fa-envelope"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- Project Progress Table -->
+                <div class="col-lg-7">
+                    <div class="card card-outline card-primary">
+                        <div class="card-header border-transparent">
+                            <h3 class="card-title">Project Progress </h3>
+                            @if (createdProjectsCount > 0)
+                            {
+                                <div class="card-tools float-right">
+                                    <span class="badge badge-primary" style="font-size: 0.9rem;">Projects not started @createdProjectsCount </span>
+                                </div>
+                            }
+                        </div>
+                        <div class="card-body p-0">
+                            <style>
+                                /* DataTables override if needed */
+                                table.dataTable td {
+                                    vertical-align: middle;
+                                }
+                                /* Force grab cursor to indicate interactivity */
+                                .drag-handle {
+                                    cursor: grab !important;
+                                    cursor: -webkit-grab !important;
+                                }
+                                .drag-handle:active {
+                                    cursor: grabbing !important;
+                                    cursor: -webkit-grabbing !important;
+                                }
+                            </style>
+                            <div class="table-responsive">
+                                <table id="projectsTable" class="table table-hover table-striped projects m-0">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 5%">#</th>
+                                            <th style="width: 35%">Project</th>
+                                            <th style="width: 15%">Progress</th>
+                                            <th style="width: 15%">Hours</th>
+                                            <th style="width: 20%">Status & Task State</th>
+                                            <th style="width: 10%">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (projects == null)
+                                        {
+                                            <tr><td colspan="6" class="text-center">Loading projects...</td></tr>
+                                        }
+                                        else if (!projects.Any())
+                                        {
+                                            <tr><td colspan="6" class="text-center">No projects found.</td></tr>
+                                        }
+                                        else
+                                        {
+                                            int index = 1;
+                                            foreach (var project in projects)
+                                            {
+                                                <tr @key="project.ProjectId" data-project-id="@project.ProjectId">
+                                                    <td>@index</td>
+                                                    <td>
+                                                        <div class="project-title-cell">
+                                                            <div class="mb-1">
+                                                                <strong>@project.ProjectWr</strong>
+                                                            </div>
+                                                            <div class="mb-1">
+                                                                <a href="/projects/view/@project.ProjectId" class="font-weight-bold text-dark" style="font-size: 1.1em;">
+                                                                    @(!string.IsNullOrEmpty(project.ProjectLocation) ? $"{project.ProjectLocation} - " : "")@project.ProjectName
+                                                                </a>
+                                                            </div>
+                                                            <small class="text-muted">
+                                                                @if (project.ProjectTendered.HasValue)
+                                                                {
+                                                                    var days = (project.ProjectTendered.Value - DateTime.Now).Days;
+                                                                    <span class="badge @GetDateBadgeClass(days) mr-1">
+                                                                        @(days < 0 ? "Overdue" : $"{days} Days")
+                                                                    </span>
+                                                                }
+                                                                Tender Close: @(project.ProjectTendered?.ToString("dd MMM yyyy") ?? "Not Tendered")
+                                                            </small>
+                                                        </div>
+                                                    </td>
+                                                    <td class="project_progress">
+                                                        @{
+                                                            var progress = projectProgress.ContainsKey(project.ProjectId) ? projectProgress[project.ProjectId] : 0;
+                                                        }
+                                                        <div class="progress progress-sm">
+                                                            <div class="progress-bar bg-green" role="progressbar" aria-valuenow="@progress" aria-valuemin="0" aria-valuemax="100" style="width: @progress%">
+                                                            </div>
+                                                        </div>
+                                                        <small>@progress.ToString("0")% Complete</small>
+                                                    </td>
+                                                    <td>
+                                                        @(projectHours.ContainsKey(project.ProjectId) ? projectHours[project.ProjectId].ToString("0.00") : "0.00")hrs
+                                                    </td>
+                                                    <td class="project-state">
+                                                        <span class="badge @GetStatusBadgeClass(project.ProjectStatus)" style="font-size: 0.9rem;">
+                                                            @GetStatusText(project.ProjectStatus)
+                                                        </span>
+                                                        <br />
+                                                        <small class="text-muted">
+                                                            @(projectLatestTask.ContainsKey(project.ProjectId) ? projectLatestTask[project.ProjectId] : "No Tasks")
+                                                        </small>
+                                                    </td>
+                                                    <td class="project-actions text-right">
+                                                        <a href="/projects/view/@project.ProjectId" class="btn btn-primary btn-sm"><i class="fas fa-folder"></i> View</a>
+                                                    </td>
+                                                </tr>
+                                                index++;
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Open Tasks Reminders -->
+                <div class="col-lg-5">
+                    <div class="card card-outline card-primary">
+                        <div class="card-header">
+                            <h3 class="card-title">Open Tasks Reminders </h3>
+                            <div class="card-tools">
+                                <span class="badge badge-primary">Open Tasks @openTasks.Count </span>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover table-striped m-0">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 15%">WR</th>
+                                            <th style="width: 40%">Project Name</th>
+                                            <th style="width: 30%">Task</th>
+                                            <th style="width: 15%">Age</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (openTasks != null && openTasks.Any())
+                                        {
+                                            @foreach (var task in openTasks)
+                                            {
+                                                var age = (DateTime.Now - task.DateCreated).Days;
+                                                // We keep the row class for background context if needed, or remove if it conflicts with striping. 
+                                                // Table-striped usually overrides background colors unless !important. 
+                                                // Let's keep it clean and use badges for urgency.
+                                                
+                                                <tr>
+                                                    <td>
+                                                        <span class="font-weight-bold">@task.Project?.ProjectWr</span>
+                                                    </td>
+                                                    <td>
+                                                        <a href="/projects/view/@task.Project?.ProjectId" class="text-dark font-weight-bold">
+                                                            @task.Project?.ProjectLocation - @task.Project?.ProjectName
+                                                        </a>
+                                                    </td>
+                                                    <td title="@GetTaskTooltip(task)">@task.Task</td>
+                                                    <td>
+                                                        <span class="badge @(age > 14 ? "badge-danger" : (age > 7 ? "badge-warning" : "badge-success"))" style="font-size: 0.9rem;">
+                                                            @age days
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <tr><td colspan="4" class="text-center">No open tasks requiring attention.</td></tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="text-center mt-5">
+            <h3>Please log in to view the dashboard.</h3>
+            <a href="/login" class="btn btn-primary">Go to Login</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private User? currentUser;
+    private List<ProjectList>? projects;
+    private List<TaskList> openTasks = new();
+    private Dictionary<int, string> userNames = new(); // Cache for user names
+    private Dictionary<int, decimal> projectProgress = new();
+    private Dictionary<int, decimal> projectHours = new();
+    private Dictionary<int, string> projectLatestTask = new();
+
+    private DotNetObjectReference<Home>? dotNetHelper;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (projects != null && projects.Any())
+        {
+             if (dotNetHelper == null) dotNetHelper = DotNetObjectReference.Create(this);
+             try {
+                await JSRuntime.InvokeVoidAsync("initProjectTableDragDrop", dotNetHelper);
+             } catch (Exception ex) {
+                // Ignore JS errors during render (common if navigating away)
+                Console.WriteLine("JS Init Error: " + ex.Message);
+             }
+        }
+    }
+
+    [JSInvokable]
+    public async Task UpdateUserProjectOrder(int[] orderedProjectIds)
+    {
+        if (currentUser != null && orderedProjectIds != null)
+        {
+            await ProjectService.UpdateProjectSortOrder(currentUser.UserId, orderedProjectIds.ToList());
+        }
+    }
+
+    public void Dispose()
+    {
+        dotNetHelper?.Dispose();
+    }
+
+    private int inProgressProjectsCount;
+    private int regionTasksCount;
+    private int inProgressTasksCount;
+    private int emailsAndFilesCount;
+    private int createdProjectsCount;
+    private decimal financialYearRevenue;
+    private int fyStartYear;
+    private int fyEndYear;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var userIdClaim = user.FindFirst("UserId");
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                currentUser = await AuthService.GetUserById(userId);
+                if (currentUser != null)
+                {
+                    // Load Projects
+                    var allProjects = await ProjectService.GetProjectsForUser(currentUser);
+                    
+                    // Calculate Created Projects Count (Status 0)
+                    createdProjectsCount = allProjects?.Count(p => p.ProjectStatus == 0) ?? 0;
+
+                    // Filter out 'Done' (status 5), 'Created' (status 0), and 'Cancelled' (status 4) projects
+                    projects = allProjects?.Where(p => p.ProjectStatus != 0 && p.ProjectStatus != 4 && p.ProjectStatus != 5).ToList();
+
+                    // Load KPI Data - User Specific
+                    inProgressProjectsCount = await ProjectService.GetUserInProgressProjectsCount(currentUser);
+                    
+                    // Region Tasks Logic
+                    if (currentUser.Role == UserRole.Admin)
+                    {
+                        regionTasksCount = await ProjectService.GetTotalSystemTasksCount();
+                    }
+                    else
+                    {
+                        regionTasksCount = await ProjectService.GetRegionTotalTasksCount(currentUser.Region ?? "");
+                    }
+
+                    inProgressTasksCount = await ProjectService.GetUserInProgressTasksCount(currentUser);
+                    financialYearRevenue = await ProjectService.GetUserFinancialYearRevenue(currentUser);
+                    emailsAndFilesCount = await ProjectService.GetTotalKeyDocumentsCount();
+
+                    // Calculate FY Years
+                    var now = DateTime.Now;
+                    if (now.Month >= 7)
+                    {
+                        fyStartYear = now.Year;
+                        fyEndYear = now.Year + 1;
+                    }
+                    else
+                    {
+                        fyStartYear = now.Year - 1;
+                        fyEndYear = now.Year;
+                    }
+
+                    // Load Project Details (Progress & Hours)
+                    if (projects != null)
+                    {
+                        foreach (var project in projects)
+                        {
+                            projectProgress[project.ProjectId] = await ProjectService.GetProjectProgress(project.ProjectId);
+                            projectHours[project.ProjectId] = await ProjectService.GetProjectTotalHours(project.ProjectId);
+                            
+                            // Get latest task
+                            var tasks = await ProjectService.GetProjectTasks(project.ProjectId);
+                            var latestTask = tasks?.OrderByDescending(t => t.DateCreated).FirstOrDefault();
+                            projectLatestTask[project.ProjectId] = latestTask?.Task ?? "No Tasks";
+                        }
+                    }
+
+                    // Load Open Task Reminders
+                    openTasks = await ProjectService.GetOpenTasksReminders(currentUser);
+
+                    // If user is Principal Estimator or Admin, load user names for tooltips
+                    if (currentUser.Role >= UserRole.PrincipalEstimator)
+                    {
+                        var users = await AuthService.GetAllUsers();
+                        if (users != null)
+                        {
+                            userNames = users.ToDictionary(u => u.UserId, u => u.DisplayName);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+    private string GetStatusText(byte? status)
+    {
+        if (!status.HasValue) return "Unknown";
+        
+        return status.Value switch
+        {
+            0 => "Created",
+            1 => "In Progress",
+            2 => "On Hold",
+            3 => "Review",
+            4 => "Cancelled",
+            5 => "Done",
+            _ => "Unknown"
+        };
+    }
+
+    private string GetStatusBadgeClass(byte? status)
+    {
+        return status switch
+        {
+            0 => "badge-secondary", // Created
+            1 => "badge-primary",   // In Progress
+            2 => "badge-warning",   // On Hold
+            3 => "badge-info",      // Review
+            4 => "badge-danger",    // Cancelled
+            5 => "badge-success",   // Done
+            _ => "badge-dark"
+        };
+    }
+
+    private string GetTaskPriorityClass(int age)
+    {
+        if (age >= 21) return "table-danger"; // Red for 21+ days
+        if (age >= 14) return "table-warning"; // Orange for 14-20 days
+        return ""; // No color for 8-13 days
+    }
+
+    private string GetTaskTooltip(TaskList task)
+    {
+        var description = task.Description;
+        
+        // Show only Description if user is not authorized to see names or Cache is empty
+        if (currentUser?.Role < UserRole.PrincipalEstimator || !userNames.Any() || task.Project == null || string.IsNullOrEmpty(task.Project.ProjectUserIds))
+        {
+            return description ?? "";
+        }
+
+        // Parse and resolve Estimator Names
+        var estimatorIds = task.Project.ProjectUserIds
+            .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(idStr => int.TryParse(idStr.Trim(), out var id) ? id : 0)
+            .Where(id => id > 0)
+            .ToList();
+
+        var estimatorNames = estimatorIds
+            .Where(id => userNames.ContainsKey(id))
+            .Select(id => userNames[id])
+            .ToList();
+
+        if (estimatorNames.Any())
+        {
+            return $"{string.Join(", ", estimatorNames)} - {description}";
+        }
+
+        return description ?? "";
+    }
+
+    private string GetDateBadgeClass(int days)
+    {
+        if (days < 0) return "badge-secondary"; // Overdue - Gray
+        if (days < 7) return "badge-danger";    // < 7 days - Red
+        if (days <= 14) return "bg-orange";     // 7-14 days - Orange
+        if (days <= 30) return "badge-warning"; // 15-30 days - Yellow (Warning)
+        return "badge-success";                 // > 30 days - Green
+    }
+}

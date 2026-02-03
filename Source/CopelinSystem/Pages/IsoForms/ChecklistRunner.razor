@@ -1,0 +1,225 @@
+@page "/iso-forms/run/{InstanceId:int}"
+@using CopelinSystem.Models
+@using CopelinSystem.Services
+@inject ChecklistService ChecklistService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+
+<section class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-sm-6">
+                <h1>@(checklist?.Template?.Name ?? "Loading...")</h1>
+            </div>
+            <div class="col-sm-6">
+                <ol class="breadcrumb float-sm-right">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item"><a href="/projects/view/@checklist?.ProjectId">Project</a></li>
+                    <li class="breadcrumb-item active">Checklist</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="content">
+    <div class="container-fluid">
+        @if (checklist == null)
+        {
+            <div class="d-flex justify-content-center">
+                <div class="spinner-border" role="status">
+                    <span class="sr-only">Loading...</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card card-primary card-outline">
+                <div class="card-header">
+                    <h3 class="card-title">@checklist.Template?.Description</h3>
+                    <div class="card-tools">
+                        <span class="badge badge-info">Status: @checklist.Status</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if (checklist.Template?.Sections != null)
+                    {
+                        @foreach (var templateSection in checklist.Template.Sections.OrderBy(s => s.DisplayOrder))
+                        {
+                            <div class="card card-secondary mb-3">
+                                <div class="card-header">
+                                    <h3 class="card-title">@templateSection.SectionName</h3>
+                                </div>
+                                <div class="card-body">
+                                    @if (!string.IsNullOrEmpty(templateSection.Description))
+                                    {
+                                        <p class="text-muted">@templateSection.Description</p>
+                                    }
+
+                                    @foreach (var question in templateSection.Questions.OrderBy(q => q.DisplayOrder))
+                                    {
+                                        <div class="form-group border-bottom pb-3 mb-3">
+                                            <label>
+                                                @question.QuestionText
+                                                @if (question.IsRequired)
+                                                {
+                                                    <span class="text-danger">*</span>
+                                                }
+                                            </label>
+                                            @if (!string.IsNullOrEmpty(question.HelpText))
+                                            {
+                                                <small class="form-text text-muted mb-2">@question.HelpText</small>
+                                            }
+
+                                            @{
+                                                var response = GetOrCreateResponse(question.QuestionId);
+                                            }
+
+                                            @switch (question.QuestionType)
+                                            {
+                                                case "Text":
+                                                    <input type="text" class="form-control" @bind="response.ResponseValue" @bind:event="oninput" @onblur="() => SaveResponse(response)" placeholder="Enter answer..." />
+                                                    break;
+                                                    
+                                                case "YesNo":
+                                                    <div class="btn-group btn-group-toggle" data-toggle="buttons">
+                                                        <label class="btn btn-outline-success @(response.ResponseValue == "Yes" ? "active" : "")" @onclick='() => UpdateResponse(response, "Yes")'>
+                                                            <input type="radio" name="options_@question.QuestionId" autocomplete="off" checked="@(response.ResponseValue == "Yes")"> Yes
+                                                        </label>
+                                                        <label class="btn btn-outline-danger @(response.ResponseValue == "No" ? "active" : "")" @onclick='() => UpdateResponse(response, "No")'>
+                                                            <input type="radio" name="options_@question.QuestionId" autocomplete="off" checked="@(response.ResponseValue == "No")"> No
+                                                        </label>
+                                                        @if(!question.IsRequired) {
+                                                            <label class="btn btn-outline-secondary @(response.ResponseValue == "NA" ? "active" : "")" @onclick='() => UpdateResponse(response, "NA")'>
+                                                                <input type="radio" name="options_@question.QuestionId" autocomplete="off" checked="@(response.ResponseValue == "NA")"> N/A
+                                                            </label>
+                                                        }
+                                                    </div>
+                                                    break;
+
+                                                case "Date":
+                                                    <input type="date" class="form-control" 
+                                                           value="@(DateTime.TryParse(response.ResponseValue, out var d) ? d.ToString("yyyy-MM-dd") : "")" 
+                                                           @onchange="@(async (ChangeEventArgs e) => { response.ResponseValue = e.Value?.ToString(); await SaveResponse(response); })" />
+                                                    break;
+
+                                                case "Checkbox":
+                                                    <div class="custom-control custom-checkbox">
+                                                        <input class="custom-control-input" type="checkbox" id="chk_@question.QuestionId" 
+                                                               checked="@(response.ResponseValue == "true")" 
+                                                               @onchange='(e) => UpdateResponse(response, (e.Value is bool b && b).ToString().ToLower())'>
+                                                        <label for="chk_@question.QuestionId" class="custom-control-label">Completed / Confirmed</label>
+                                                    </div>
+                                                    break;
+                                                    
+                                                case "TextArea":
+                                                    <textarea class="form-control" rows="3" @bind="response.ResponseValue" @bind:event="oninput" @onblur="() => SaveResponse(response)"></textarea>
+                                                    break;
+
+                                                case "MultiSelect":
+                                                    var selected = new List<string>();
+                                                    try { 
+                                                        if(!string.IsNullOrEmpty(response.ResponseValue)) 
+                                                            selected = System.Text.Json.JsonSerializer.Deserialize<List<string>>(response.ResponseValue) ?? new List<string>();
+                                                    } catch {}
+
+                                                    <div class="row">
+                                                    @foreach(var opt in question.Options.OrderBy(o => o.DisplayOrder))
+                                                    {
+                                                        var isChecked = selected.Contains(opt.OptionText);
+                                                        <div class="col-md-6">
+                                                            <div class="custom-control custom-checkbox">
+                                                                 <input type="checkbox" class="custom-control-input" id="opt_@opt.OptionId" 
+                                                                        checked="@isChecked"
+                                                                        @onchange="@(async (ChangeEventArgs e) => { 
+                                                                             var val = (bool)(e.Value ?? false);
+                                                                             if(val && !selected.Contains(opt.OptionText)) selected.Add(opt.OptionText);
+                                                                             else if(!val && selected.Contains(opt.OptionText)) selected.Remove(opt.OptionText);
+                                                                             
+                                                                             response.ResponseValue = System.Text.Json.JsonSerializer.Serialize(selected);
+                                                                             await SaveResponse(response);
+                                                                        })" />
+                                                                 <label class="custom-control-label" for="opt_@opt.OptionId">@opt.OptionText</label>
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                    </div>
+                                                    break;
+                                            }
+                                            
+                                            <input type="text" class="form-control form-control-sm mt-2" placeholder="Notes / Comments (Optional)" @bind="response.Notes" @onblur="() => SaveResponse(response)" />
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-default" @onclick="Exit">Close / Save Draft</button>
+                    <button class="btn btn-success float-right" @onclick="SubmitChecklist">Submit / Complete</button>
+                </div>
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter] public int InstanceId { get; set; }
+
+    private ProjectChecklist? checklist;
+    private string currentUserName = "System";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity != null && user.Identity.IsAuthenticated)
+        {
+            currentUserName = user.Identity.Name ?? "System";
+            var displayName = user.FindFirst("DisplayName")?.Value;
+            if (!string.IsNullOrEmpty(displayName)) currentUserName = displayName; 
+        }
+
+        checklist = await ChecklistService.GetChecklistInstanceAsync(InstanceId);
+    }
+
+    private ChecklistResponse GetOrCreateResponse(int questionId)
+    {
+        var response = checklist!.Responses.FirstOrDefault(r => r.QuestionId == questionId);
+        if (response == null)
+        {
+            response = new ChecklistResponse
+            {
+                ChecklistInstanceId = checklist.ChecklistInstanceId,
+                QuestionId = questionId,
+                RespondedBy = currentUserName
+            };
+            checklist.Responses.Add(response); // Add to local list so re-renders see it
+        }
+        return response;
+    }
+
+    private async Task UpdateResponse(ChecklistResponse response, string value)
+    {
+        response.ResponseValue = value;
+        await SaveResponse(response);
+    }
+
+    private async Task SaveResponse(ChecklistResponse response)
+    {
+        response.RespondedBy = currentUserName;
+        await ChecklistService.SaveResponseAsync(response);
+    }
+
+    private async Task SubmitChecklist()
+    {
+        await ChecklistService.CompleteChecklistAsync(InstanceId, currentUserName);
+        Navigation.NavigateTo($"/projects/view/{checklist?.ProjectId}");
+    }
+
+    private void Exit()
+    {
+        Navigation.NavigateTo($"/projects/view/{checklist?.ProjectId}");
+    }
+}
