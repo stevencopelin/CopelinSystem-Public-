@@ -5,6 +5,8 @@
 [Oo]bj/
 *.user
 *.suo
+*.user
+*.sln.docstates
 
 # VS Code
 .vscode/
@@ -14,3 +16,22 @@
 
 # Logs
 *.log
+
+# .NET / Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Test results
+TestResult.xml
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.userprefs
+
+# Publish
+publish/
+*.publishsettings
