@@ -39,6 +39,8 @@ extends:
           AppPoolIdentityForWebsite: 'SpecificUser'
           appPoolUsernameForWebsite: 'DPWSERVICES\svcEWSDev$'
           windowsAuthenticationForWebsite: true
+          variableGroups:
+            - EWS-CICD-DEV
 
     
     deployUAT:
