@@ -36,7 +36,8 @@ extends:
             - hostname: EWS-DEV.hpw.qld.gov.au
           websiteName: EWS-DEV.hpw.qld.gov.au
           websiteRootFolderOnDisk: F:\Websites\EWS
-          appPoolIdentityForWebsite: ApplicationPoolIdentity
+          AppPoolIdentityForWebsite: 'SpecificUser'
+          appPoolUsernameForWebsite: 'DPWSERVICES\svcEWSDev$'
           windowsAuthenticationForWebsite: true
           variableGroups:
             - EWS-CICD-DEV
