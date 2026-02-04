@@ -24,9 +24,9 @@ extends:
         steps:
           - template: /build/website-dotnet.yml@templates
             parameters:
-              solutionToRestore: CopelinSystem.slnx
+              solutionToRestore: Source/CopelinSystem//CopelinSystem.slnx
               websiteProjectFolder: $(Build.SourcesDirectory)
-              websiteProjectFile: CopelinSystem.csproj
+              websiteProjectFile: Source/CopelinSystem/CopelinSystem.csproj
     
     deployDEV:
       - template: /deploy/website-iis-dotnet.yml@templates
