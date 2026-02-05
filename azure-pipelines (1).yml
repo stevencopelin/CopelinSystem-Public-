@@ -1,0 +1,70 @@
+trigger:
+ branches:
+  include:
+    - releases/*
+ paths:
+  include:
+    - ./*
+
+pool:
+  vmImage: 'windows-latest'
+
+resources:
+ repositories:
+   - repository: templates
+     type: git
+     name: Shared Packages/PipelineTemplates
+     ref: refs/heads/main
+
+extends:
+  template: /pipelines/cicd-template.yml@templates
+  parameters:
+    build:
+      - job: Build
+        steps:
+          - template: /build/website-dotnet.yml@templates
+            parameters:
+              solutionToRestore: Source/CopelinSystem//CopelinSystem.slnx
+              websiteProjectFolder: $(Build.SourcesDirectory)
+              websiteProjectFile: Source/CopelinSystem/CopelinSystem.csproj
+    
+    deployDEV:
+      - template: /deploy/website-iis-dotnet.yml@templates
+        parameters:
+          environment: DEV
+          bindings:             
+            - hostname: EWS-DEV.hpw.qld.gov.au
+          websiteName: EWS-DEV.hpw.qld.gov.au
+          websiteRootFolderOnDisk: F:\Websites\EWS
+          appPoolIdentityForWebsite: 'SpecificUser'
+          appPoolUsernameForWebsite: 'DPWSERVICES\svcEWSDev$'
+          windowsAuthenticationForWebsite: true
+          variableGroups:
+            - EWS-CICD-DEV
+
+    
+    deployUAT:
+      - template: /deploy/website-iis-dotnet.yml@templates
+        parameters:
+          environment: UAT
+          bindings:             
+            - hostname: EWS-UAT.hpw.qld.gov.au
+          websiteName: EWS-UAT.hpw.qld.gov.au
+          websiteRootFolderOnDisk: F:\Websites\EWS
+          appPoolIdentityForWebsite: ApplicationPoolIdentity
+          windowsAuthenticationForWebsite: true
+          variableGroups:
+            - EWS-CICD-UAT
+    
+    deployPROD:
+      - template: /deploy/website-iis-dotnet.yml@templates
+        parameters:
+          environment: PROD
+          bindings:           
+            - hostname: EWS.hpw.qld.gov.au
+          websiteName: EWS.hpw.qld.gov.au
+          websiteRootFolderOnDisk: F:\Websites\EWS
+          appPoolIdentityForWebsite: ApplicationPoolIdentity
+          windowsAuthenticationForWebsite: true
+          variableGroups:
+            - EWS-CICD-PROD
