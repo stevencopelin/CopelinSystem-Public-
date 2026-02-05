@@ -32,28 +32,59 @@ namespace CopelinSystem.Services
 
 #pragma warning disable CA1416 // Validate platform compatibility
             var sid = windowsIdentity.User?.Value;
-            var name = windowsIdentity.Name; // DOMAIN\username
+            var rawName = windowsIdentity.Name; // DOMAIN\username
 #pragma warning restore CA1416 // Validate platform compatibility
             
             if (string.IsNullOrEmpty(sid))
                 return null;
 
+            // NORMALIZE: Fix double domain issues (e.g. DPWSERVICES\DPWSERVICES\User -> DPWSERVICES\User)
+            var name = NormalizeIdentityName(rawName);
+
             using var context = await _contextFactory.CreateDbContextAsync();
 
-            // Try to find by SID first
+            // 1. Try to find by SID matches
             var user = await context.Users
                 .FirstOrDefaultAsync(u => u.AdSid == sid);
 
-            // If not found by SID, try by username (in case SID changed or migration)
+            // 2. If not found by SID, try by normalized username
             if (user == null && !string.IsNullOrEmpty(name))
             {
                 user = await context.Users
                     .FirstOrDefaultAsync(u => u.AdUsername == name);
             }
 
+            // 3. Smart Fallback for Domain Mismatches (e.g. DPWSERVICES\User vs DPWSERVICES.DPW.QLD.GOV.AU\User)
+            if (user == null && !string.IsNullOrEmpty(name) && name.Contains("\\"))
+            {
+                var parts = name.Split('\\');
+                if (parts.Length == 2)
+                {
+                    var domain = parts[0];
+                    var username = parts[1];
+
+                    // Find users with the same username part
+                    var candidateUsers = await context.Users
+                        .Where(u => u.AdUsername != null && u.AdUsername.EndsWith("\\" + username))
+                        .ToListAsync();
+
+                    // Check if any candidate's domain contains our short domain (or vice versa)
+                    // e.g. Match "DPWSERVICES" with "DPWSERVICES.DPW.QLD.GOV.AU"
+                    user = candidateUsers.FirstOrDefault(u => 
+                    {
+                        var dbParts = u.AdUsername?.Split('\\');
+                        if (dbParts?.Length != 2) return false;
+                        
+                        var dbDomain = dbParts[0];
+                        return dbDomain.StartsWith(domain, StringComparison.OrdinalIgnoreCase) || 
+                               domain.StartsWith(dbDomain, StringComparison.OrdinalIgnoreCase);
+                    });
+                }
+            }
+
             if (user == null)
             {
-                // Create new user
+                // Create new user using the NORMALIZED name
                 user = new User
                 {
                     AdSid = sid,
@@ -68,9 +99,7 @@ namespace CopelinSystem.Services
                 {
                     var parts = name.Split('\\');
                     user.AdDomain = parts[0];
-                    // We might want to set a default display name from the username part
-                    // But usually we'd want to query AD for real name. 
-                    // For now, let's just set Firstname/Lastname to parts of the username if possible or placeholders
+                    // Clean up username for Firstname logic
                     user.Firstname = parts[1]; 
                 }
                 else
@@ -92,11 +121,39 @@ namespace CopelinSystem.Services
                     user.AdSid = sid;
                 }
 
+                // If we matched via Smart Fallback/SID but the AdUsername in DB is different/outdated, 
+                // we might consider updating it? 
+                // For now, let's NOT change AdUsername to avoid breaking other things, but rely on SID for future.
+
                 context.Users.Update(user);
                 await context.SaveChangesAsync();
             }
 
             return user;
+        }
+
+        private string NormalizeIdentityName(string? name)
+        {
+            if (string.IsNullOrEmpty(name)) return string.Empty;
+
+            // Fix known double-domain issue
+            // e.g. "DPWSERVICES\DPWSERVICES\Steven.COPELIN" -> "DPWSERVICES\Steven.COPELIN"
+            if (name.Contains("\\"))
+            {
+                var parts = name.Split('\\');
+                if (parts.Length >= 3)
+                {
+                    // Detect repeated domain
+                    if (parts[0].Equals(parts[1], StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Reconstruct without the first usage
+                        // "Domain\Domain\User" -> "Domain\User"
+                        return string.Join("\\", parts.Skip(1));
+                    }
+                }
+            }
+
+            return name;
         }
 
         /// <summary>
