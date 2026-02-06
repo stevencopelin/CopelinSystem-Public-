@@ -63,22 +63,29 @@ namespace CopelinSystem.Services
                     var domain = parts[0];
                     var username = parts[1];
 
-                    // Find users with the same username part
-                    var candidateUsers = await context.Users
-                        .Where(u => u.AdUsername != null && u.AdUsername.EndsWith("\\" + username))
-                        .ToListAsync();
+                    // 3a. Try Exact Username Match (ignoring domain)
+                    // e.g. "DPWSERVICES\Steven.COPELIN" matches "Steven.COPELIN"
+                    user = await context.Users
+                        .FirstOrDefaultAsync(u => u.AdUsername == username);
 
-                    // Check if any candidate's domain contains our short domain (or vice versa)
-                    // e.g. Match "DPWSERVICES" with "DPWSERVICES.DPW.QLD.GOV.AU"
-                    user = candidateUsers.FirstOrDefault(u => 
+                    if (user == null)
                     {
-                        var dbParts = u.AdUsername?.Split('\\');
-                        if (dbParts?.Length != 2) return false;
-                        
-                        var dbDomain = dbParts[0];
-                        return dbDomain.StartsWith(domain, StringComparison.OrdinalIgnoreCase) || 
-                               domain.StartsWith(dbDomain, StringComparison.OrdinalIgnoreCase);
-                    });
+                        // 3b. Try Domain Fuzzy Match
+                        // Find users with the same username part (checking fully qualified domains)
+                        var candidateUsers = await context.Users
+                            .Where(u => u.AdUsername != null && u.AdUsername.EndsWith("\\" + username))
+                            .ToListAsync();
+
+                        user = candidateUsers.FirstOrDefault(u => 
+                        {
+                            var dbParts = u.AdUsername?.Split('\\');
+                            if (dbParts?.Length != 2) return false;
+                            
+                            var dbDomain = dbParts[0];
+                            return dbDomain.StartsWith(domain, StringComparison.OrdinalIgnoreCase) || 
+                                   domain.StartsWith(dbDomain, StringComparison.OrdinalIgnoreCase);
+                        });
+                    }
                 }
             }
 
@@ -99,11 +106,33 @@ namespace CopelinSystem.Services
                 {
                     var parts = name.Split('\\');
                     user.AdDomain = parts[0];
-                    // Clean up username for Firstname logic
-                    user.Firstname = parts[1]; 
+                    var usernamePart = parts[1];
+                    
+                    // Parse Token for First/Last Name
+                    if (usernamePart.Contains("."))
+                    {
+                        var nameParts = usernamePart.Split('.');
+                        user.Firstname = nameParts[0];
+                        if (nameParts.Length > 1) user.Lastname = nameParts[1];
+                    }
+                    else if (usernamePart.Contains(" "))
+                    {
+                        var nameParts = usernamePart.Split(' ');
+                        user.Firstname = nameParts[0];
+                        if (nameParts.Length > 1) user.Lastname = nameParts[1];
+                    }
+                    else
+                    {
+                        user.Firstname = usernamePart;
+                    }
+
+                    // Generate Email
+                    user.Email = $"{usernamePart.Replace(" ", ".").ToLower()}@hpw.qld.gov.au";
                 }
                 else
                 {
+                    // Fallback for email if no domain
+                    user.Email = $"{name.Replace(" ", ".").ToLower()}@hpw.qld.gov.au";
                     user.Firstname = name;
                 }
 
@@ -210,7 +239,7 @@ namespace CopelinSystem.Services
         public async Task<User> EnsureAdminUserExists()
         {
             using var context = await _contextFactory.CreateDbContextAsync();
-            var admin = await context.Users.FirstOrDefaultAsync(u => u.Email == "admin@copelin.com");
+            var admin = await context.Users.FirstOrDefaultAsync(u => u.Email == "admin@hpw.qld.gov.au");
             
             if (admin == null)
             {
@@ -223,7 +252,7 @@ namespace CopelinSystem.Services
                     {
                         Firstname = "System",
                         Lastname = "Admin",
-                        Email = "admin@copelin.com",
+                        Email = "admin@hpw.qld.gov.au",
                         UserType = (byte)UserRole.Admin,
                         Region = "All",
                         AdUsername = "admin",
@@ -243,7 +272,7 @@ namespace CopelinSystem.Services
         {
             using var context = await _contextFactory.CreateDbContextAsync();
             // Try to match by email
-            string email = $"{employee.FullName.Replace(" ", ".").ToLower()}@copelin.com";
+            string email = $"{employee.FullName.Replace(" ", ".").ToLower()}@hpw.qld.gov.au";
             var user = await context.Users.FirstOrDefaultAsync(u => u.Email == email);
 
             if (user == null)
@@ -355,7 +384,7 @@ namespace CopelinSystem.Services
                  if (!string.IsNullOrEmpty(name))
                  {
                     // Generate Email from name if possible (First.Last@copelin.com)
-                    user.Email = $"{name.Replace(" ", ".").ToLower()}@copelin.com";
+                    user.Email = $"{name.Replace(" ", ".").ToLower()}@hpw.qld.gov.au";
 
                     if (name.Contains("\\"))
                     {
