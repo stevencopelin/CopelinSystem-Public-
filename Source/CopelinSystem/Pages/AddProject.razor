@@ -29,7 +29,7 @@
 
                 <div class="card card-outline card-primary">
                     <div class="card-body">
-                        <EditForm Model="@newProject" OnValidSubmit="@HandleSubmit">
+                        <EditForm Model="@newProject" OnSubmit="@HandleSubmit">
                             <DataAnnotationsValidator />
                             
                             <!-- Basic Information -->
@@ -75,13 +75,17 @@
                             <div class="row">
                                 <div class="col-md-4 mb-3">
                                     <label class="form-label">Region <span class="text-danger">*</span></label>
-                                    <InputSelect @bind-Value="selectedRegionId" @bind-Value:after="OnRegionChangedAsync" class="form-control">
+                                    <InputSelect @bind-Value="selectedRegionId" @bind-Value:after="OnRegionChangedAsync" class="@regionInputClass" style="background-image: none !important;">
                                         <option value="">-- Select Region --</option>
                                         @foreach (var region in regions)
                                         {
                                             <option value="@region.RegionId">@region.RegionName</option>
                                         }
                                     </InputSelect>
+                                    @if (!string.IsNullOrEmpty(regionErrorMessage))
+                                    {
+                                        <div class="invalid-feedback">@regionErrorMessage</div>
+                                    }
                                 </div>
 
                                 <div class="col-md-8 mb-3">
@@ -189,7 +193,7 @@
 
 
                                 <div class="col-md-3 mb-3">
-                                    <label class="form-label">Client Required By <span class="text-danger">*</span></label>
+                                    <label class="form-label">Client Quote Required By <span class="text-danger">*</span></label>
                                     <InputDate @bind-Value="newProject.ProjectClientRequired" class="form-control" />
                                     <ValidationMessage For="@(() => newProject.ProjectClientRequired)" />
                                 </div>
@@ -197,7 +201,7 @@
 
                             <div class="row">
                                 <div class="col-md-3 mb-3">
-                                    <label class="form-label">Client Completion Date <span class="text-danger">*</span></label>
+                                    <label class="form-label">Client Project Completion Date <span class="text-danger">*</span></label>
                                     <InputDate @bind-Value="newProject.ProjectClientCompletion" class="form-control" />
                                     <ValidationMessage For="@(() => newProject.ProjectClientCompletion)" />
                                 </div>
@@ -213,12 +217,12 @@
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label">Indicative Price</label>
-                                    <InputText @bind-Value="newProject.ProjectIndicative" class="form-control" placeholder="$0.00" />
+                                    <InputText @bind-Value="newProject.ProjectIndicative" class="form-control" type="number" step="0.01" min="0" placeholder="$0.00" />
                                 </div>
 
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label">Actual Price</label>
-                                    <InputText @bind-Value="newProject.ProjectActualPrice" class="form-control" placeholder="$0.00" />
+                                    <InputText @bind-Value="newProject.ProjectActualPrice" class="form-control" type="number" step="0.01" min="0" placeholder="$0.00" />
                                 </div>
                             </div>
 
@@ -291,6 +295,9 @@
     private bool isSubmitting = false;
     private string wrErrorMessage = "";
     private string wrInputClass => string.IsNullOrEmpty(wrErrorMessage) ? "form-control" : "form-control is-invalid";
+    
+    private string regionErrorMessage = "";
+    private string regionInputClass => string.IsNullOrEmpty(regionErrorMessage) ? "form-control" : "form-control is-invalid";
 
     // Dropdown data
     private List<Region> regions = new();
@@ -369,6 +376,8 @@
     {
         if (!string.IsNullOrEmpty(selectedRegionId) && int.TryParse(selectedRegionId, out int regionId))
         {
+            regionErrorMessage = ""; // Clear error
+            
             // Get region name
             var region = regions.FirstOrDefault(r => r.RegionId == regionId);
             newProject.ProjectRegion = region?.RegionName;
@@ -449,14 +458,32 @@
         }
     }
 
-    private async Task HandleSubmit()
+    private async Task HandleSubmit(EditContext context)
     {
-        if (isSubmitting) return;
+        // 1. Run standard validation (model annotation validation)
+        bool isFormValid = context.Validate();
+
+        // 2. Run custom validation
+        bool isRegionValid = true;
+        if (string.IsNullOrEmpty(selectedRegionId))
+        {
+            regionErrorMessage = "Please select a region.";
+            isRegionValid = false;
+        }
+
+        if (isSubmitting || !isFormValid || !isRegionValid) return;
         
         // Check for duplicates one last time
         await CheckWrDuplication();
         if (!string.IsNullOrEmpty(wrErrorMessage))
         {
+            return;
+        }
+
+        // Validate Region (already done above, but keeping safe check)
+        if (string.IsNullOrEmpty(selectedRegionId))
+        {
+            regionErrorMessage = "Please select a region.";
             return;
         }
         
@@ -494,6 +521,12 @@
             if (!newProject.ProjectClientCompletion.HasValue)
             {
                 await JSRuntime.InvokeVoidAsync("Notifications.showError", "Client Completion Date is required.");
+                return;
+            }
+
+            if (newProject.ProjectClientCompletion < newProject.ProjectClientRequired)
+            {
+                await JSRuntime.InvokeVoidAsync("Notifications.showError", "Client Project Completion Date cannot be earlier than Client Quote Required By date.");
                 return;
             }
             

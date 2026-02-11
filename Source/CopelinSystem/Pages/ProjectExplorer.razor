@@ -242,10 +242,10 @@
                                                 </div>
                                             </td>
                                             <td>
-                                                @(project.ProjectStartDate?.ToString("MMM dd, yyyy") ?? "-")
+                                                @(project.ProjectStartDate?.ToString("dd MMM, yyyy") ?? "-")
                                             </td>
                                             <td>
-                                                @(project.ProjectEndDate?.ToString("MMM dd, yyyy") ?? "No Close Date")
+                                                @(project.ProjectEndDate?.ToString("dd MMM, yyyy") ?? "No Close Date")
                                             </td>
                                             <td>
                                                 <span class="badge @GetStatusBadgeClass(project.ProjectStatus)">

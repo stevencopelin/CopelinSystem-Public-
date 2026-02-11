@@ -102,8 +102,18 @@ namespace CopelinSystem.Services
             using var context = await _contextFactory.CreateDbContextAsync();
             try
             {
-                context.Employees.Update(employee);
+                var existingEmployee = await context.Employees.FindAsync(employee.EmployeeId);
+                if (existingEmployee == null) return false;
+
+                existingEmployee.FullName = employee.FullName;
+                existingEmployee.RegionId = employee.RegionId;
+                existingEmployee.Active = employee.Active;
+                
                 await context.SaveChangesAsync();
+                
+                // Sync to User table to ensure Region/Roles match
+                await SyncUserRole(employee.EmployeeId);
+                
                 return true;
             }
             catch

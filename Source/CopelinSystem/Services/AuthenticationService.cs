@@ -271,9 +271,18 @@ namespace CopelinSystem.Services
         public async Task<User> EnsureUserForEmployee(Employee employee, UserRole role)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
-            // Try to match by email
+            // Try to match by email OR AdUsername (to avoid unique constraint violations)
             string email = $"{employee.FullName.Replace(" ", ".").ToLower()}@hpw.qld.gov.au";
-            var user = await context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            string simpleUsername = employee.FullName.Replace(" ", "");      // e.g. SteveNumber2
+            string dotUsername = employee.FullName.Replace(" ", ".");        // e.g. Steve.Number2
+            
+            var user = await context.Users.FirstOrDefaultAsync(u => 
+                u.Email == email || 
+                u.AdUsername == simpleUsername ||
+                u.AdUsername == dotUsername ||
+                (u.AdUsername != null && u.AdUsername.EndsWith("\\" + simpleUsername)) ||
+                (u.AdUsername != null && u.AdUsername.EndsWith("\\" + dotUsername))
+            );
 
             if (user == null)
             {
@@ -284,7 +293,7 @@ namespace CopelinSystem.Services
                     Email = email,
                     UserType = (byte)role,
                     Region = employee.Region?.RegionName,
-                    AdUsername = employee.FullName.Replace(" ", ""),
+                    AdUsername = simpleUsername,
                     DateCreated = DateTime.Now,
                     LastActive = DateTime.Now
                 };
@@ -296,6 +305,13 @@ namespace CopelinSystem.Services
                 // Update existing user's role and last active time
                 user.UserType = (byte)role;
                 user.LastActive = DateTime.Now;
+                
+                // Update region if changed
+                if (user.Region != employee.Region?.RegionName)
+                {
+                    user.Region = employee.Region?.RegionName;
+                }
+
                 context.Users.Update(user);
                 await context.SaveChangesAsync();
             }
