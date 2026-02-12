@@ -174,22 +174,7 @@
                                 {
                                     <!-- Role Statistics -->
                                     <div class="row mb-3">
-                                        <div class="col-md-2">
-                                            <div class="card bg-light">
-                                                <div class="card-body">
-                                                    <h6>Supervisors</h6>
-                                                    <h3>@roleCounts.GetValueOrDefault("Supervisor", 0)</h3>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-2">
-                                            <div class="card bg-light">
-                                                <div class="card-body">
-                                                    <h6>Senior Estimators</h6>
-                                                    <h3>@roleCounts.GetValueOrDefault("Senior Estimator", 0)</h3>
-                                                </div>
-                                            </div>
-                                        </div>
+
                                         <div class="col-md-2">
                                             <div class="card bg-light">
                                                 <div class="card-body">
@@ -238,10 +223,9 @@
                                             <tr>
                                                 <th>Employee Name</th>
                                                 <th>Region</th>
-                                                <th class="text-center">Supervisor</th>
-                                                <th class="text-center">Sr. Estimator</th>
-                                                <th class="text-center">Principal</th>
-                                                <th class="text-center">Planning Mgr</th>
+
+                                                <th class="text-center">Principal Estimator</th>
+                                                <th class="text-center">Planning Manager</th>
                                                 <th class="text-center">Estimator</th>
                                                 <th class="text-center">Read Only</th>
                                                 <th class="text-center">Admin</th>
@@ -253,16 +237,7 @@
                                                 <tr>
                                                     <td>@employee.FullName</td>
                                                     <td>@(employee.Region?.RegionName ?? "-")</td>
-                                                    <td class="text-center">
-                                                        <input type="checkbox" 
-                                                               checked="@HasRole(employee, RoleType.Supervisor)"
-                                                               @onchange="e => ToggleRole(employee.EmployeeId, RoleType.Supervisor, (bool)(e.Value ?? false))" />
-                                                    </td>
-                                                    <td class="text-center">
-                                                        <input type="checkbox" 
-                                                               checked="@HasRole(employee, RoleType.SeniorEstimator)"
-                                                               @onchange="e => ToggleRole(employee.EmployeeId, RoleType.SeniorEstimator, (bool)(e.Value ?? false))" />
-                                                    </td>
+
                                                     <td class="text-center">
                                                         <input type="checkbox" 
                                                                checked="@HasRole(employee, RoleType.PrincipalEstimator)"
