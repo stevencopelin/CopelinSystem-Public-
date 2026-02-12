@@ -488,7 +488,7 @@
     private async Task LoadData()
     {
         regions = await EmployeeService.GetAllRegions();
-        clients = await ClientService.GetAllClients();
+        clients = await ClientService.GetAllClients(includeInactive: true);
         clientCountByRegion = await EmployeeService.GetEmployeeCountByRegion();
     }
 

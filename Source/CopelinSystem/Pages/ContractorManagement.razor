@@ -219,7 +219,7 @@
 
     private async Task LoadData()
     {
-        contractors = await ContractorService.GetAllContractors();
+        contractors = await ContractorService.GetAllContractors(includeInactive: true);
     }
 
     private void OpenAddModal()

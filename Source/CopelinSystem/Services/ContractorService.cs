@@ -19,11 +19,17 @@ namespace CopelinSystem.Services
         /// <summary>
         /// Get all active contractors
         /// </summary>
-        public async Task<List<Contractor>> GetAllContractors()
+        public async Task<List<Contractor>> GetAllContractors(bool includeInactive = false)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
-            return await context.Contractors
-                .Where(c => c.IsActive)
+            var query = context.Contractors.AsQueryable();
+
+            if (!includeInactive)
+            {
+                query = query.Where(c => c.IsActive);
+            }
+
+            return await query
                 .OrderBy(c => c.BusinessName)
                 .ToListAsync();
         }

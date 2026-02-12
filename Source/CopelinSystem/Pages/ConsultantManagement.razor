@@ -219,7 +219,7 @@
 
     private async Task LoadData()
     {
-        consultants = await ConsultantService.GetAllConsultants();
+        consultants = await ConsultantService.GetAllConsultants(includeInactive: true);
     }
 
     private void OpenAddModal()

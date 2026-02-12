@@ -19,13 +19,20 @@ namespace CopelinSystem.Services
         /// <summary>
         /// Get all active clients
         /// </summary>
-        public async Task<List<Client>> GetAllClients()
+        public async Task<List<Client>> GetAllClients(bool includeInactive = false)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
-            return await context.Clients
+            var query = context.Clients
                 .Include(c => c.Region)
                 .Include(c => c.ClientContacts)
-                .Where(c => c.IsActive)
+                .AsQueryable();
+
+            if (!includeInactive)
+            {
+                query = query.Where(c => c.IsActive);
+            }
+
+            return await query
                 .OrderBy(c => c.ClientCode)
                 .ToListAsync();
         }
