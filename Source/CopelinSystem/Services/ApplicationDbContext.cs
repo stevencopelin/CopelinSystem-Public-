@@ -51,7 +51,7 @@ namespace CopelinSystem.Services
         
         public DbSet<HelpArticle> HelpArticles { get; set; }
 
-        public DbSet<AppBranding> AppBranding { get; set; }
+
 
         public virtual DbSet<ExternalRegionEmail> ExternalRegionEmails { get; set; }
 
@@ -92,20 +92,7 @@ namespace CopelinSystem.Services
             modelBuilder.ApplyConfiguration(new ProjectEmailAttachmentConfiguration());
             modelBuilder.ApplyConfiguration(new FileSystemItemConfiguration());
 
-            modelBuilder.Entity<AppBranding>().HasData(
-                new AppBranding
-                {
-                    Id = 1,
-                    FooterHtml = @"<footer class=""main-footer"">
-    <strong> {{Year}} <a href=""#"">Estimating Module | Copelin System</a> - </strong>
-    Qld Governement - QBuild.
-    <div class=""float-right d-none d-sm-inline-block"">
-        <b>Version</b> {{Version}}
-    </div>
-</footer>",
-                    IsLocked = true
-                }
-            );
+            modelBuilder.ApplyConfiguration(new FileSystemItemConfiguration());
         }
     }
 }

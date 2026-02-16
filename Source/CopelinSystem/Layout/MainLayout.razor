@@ -6,7 +6,7 @@
 @inject PermissionService PermissionService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
-@inject IBrandingService BrandingService
+
 
 <style>
     /* Ensure sub-menus show/hide based on Blazor state without AdminLTE JS intervention */
@@ -348,7 +348,13 @@
             </div>
 
             <!-- Footer -->
-            @((MarkupString)footerHtml)
+            <footer class="main-footer">
+                <strong> @DateTime.Now.Year <a href="#">Estimating Module | Copelin System</a> - </strong>
+                Qld Governement - QBuild.
+                <div class="float-right d-none d-sm-inline-block">
+                    <b>Version</b> 2.0.0
+                </div>
+            </footer>
         </div>
     </Authorized>
     <NotAuthorized>
@@ -373,7 +379,7 @@
     private List<User>? onlineUsers;
     private string systemName = "Estimating Work Flow System";
     private string currentPath = "";
-    private string footerHtml = "";
+
 
     private bool canManageUsers = false;
     private bool canManageEmployees = false;
@@ -395,8 +401,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        footerHtml = await BrandingService.GetFooterBrandingAsync();
-
         // Get online users (active in last 15 minutes)
         onlineUsers = await AuthService.GetAllUsers();
         onlineUsers = onlineUsers

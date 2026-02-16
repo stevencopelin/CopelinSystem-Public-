@@ -105,7 +105,7 @@ builder.Services.AddScoped<ReportingService>();
 builder.Services.AddScoped<EmailService>();
 builder.Services.AddScoped<HelpService>();
 builder.Services.AddScoped<HelpSeeder>();
-builder.Services.AddScoped<IBrandingService, BrandingService>();
+
 builder.Services.AddScoped<SubmissionTokenService>();
 builder.Services.AddScoped<HtmlExportService>();
 builder.Services.AddScoped<FileSystemService>();
