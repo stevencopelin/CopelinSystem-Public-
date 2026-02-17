@@ -284,16 +284,16 @@
                                             @if (!IsEditing("ProjectActualPrice"))
                                             {
                                                 <span class="editable-field" @onclick='() => StartEdit("ProjectActualPrice", project.ProjectActualPrice ?? "")' title="Click to edit">
-                                                    @(project.ProjectActualPrice ?? "-")
+                                                    @(FormatCurrency(project.ProjectActualPrice))
                                                     <i class="fas fa-edit ml-2 text-muted"></i>
                                                 </span>
                                             }
                                             else
                                             {
-                                                <input type="text" class="form-control form-control-sm" 
+                                                <input type="number" step="0.01" min="0" class="form-control form-control-sm" 
                                                        @bind="project.ProjectActualPrice" 
-                                                       @onblur='() => SaveField("ProjectActualPrice", project.ProjectActualPrice ?? "")'
-                                                       @onkeydown='(e) => HandleFieldKeyDown(e, "ProjectActualPrice", project.ProjectActualPrice ?? "")'
+                                                       @onblur='() => SaveDecimalField("ProjectActualPrice", project.ProjectActualPrice ?? "")'
+                                                       @onkeydown='(e) => HandleDecimalFieldKeyDown(e, "ProjectActualPrice", project.ProjectActualPrice ?? "")'
                                                        autofocus />
                                             }
                                             @if (IsSaving("ProjectActualPrice")) { <i class="fas fa-spinner fa-spin ml-2"></i> }
@@ -301,7 +301,24 @@
                                     </tr>
                                     <tr>
                                         <td><strong>Indicative Price</strong></td>
-                                        <td>$&nbsp;&nbsp;&nbsp;@(project.ProjectIndicative ?? "-")</td>
+                                        <td>$
+                                            @if (!IsEditing("ProjectIndicative"))
+                                            {
+                                                <span class="editable-field" @onclick='() => StartEdit("ProjectIndicative", project.ProjectIndicative ?? "")' title="Click to edit">
+                                                    @(FormatCurrency(project.ProjectIndicative))
+                                                    <i class="fas fa-edit ml-2 text-muted"></i>
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <input type="number" step="0.01" min="0" class="form-control form-control-sm" 
+                                                       @bind="project.ProjectIndicative" 
+                                                       @onblur='() => SaveDecimalField("ProjectIndicative", project.ProjectIndicative ?? "")'
+                                                       @onkeydown='(e) => HandleDecimalFieldKeyDown(e, "ProjectIndicative", project.ProjectIndicative ?? "")'
+                                                       autofocus />
+                                            }
+                                            @if (IsSaving("ProjectIndicative")) { <i class="fas fa-spinner fa-spin ml-2"></i> }
+                                        </td>
                                      </tr>
                                     <tr>
                                         <td><strong>Purchase Order</strong></td>
@@ -1297,6 +1314,92 @@
 
     private async Task SaveWr() => await SaveField("ProjectWr", project?.ProjectWr ?? "");
     private async Task SaveDescription() => await SaveField("ProjectDescription", project?.ProjectDescription ?? "");
+
+    // Decimal Field Handling Methods
+    private async Task SaveDecimalField(string fieldName, string newValue)
+    {
+        if (project == null) return;
+
+        savingFields[fieldName] = true;
+        StateHasChanged();
+
+        try
+        {
+            string? valueToSave = null;
+
+            // Validate and format the value if not empty
+            if (!string.IsNullOrWhiteSpace(newValue))
+            {
+                if (decimal.TryParse(newValue, out decimal parsed))
+                {
+                    // Validate non-negative
+                    if (parsed < 0)
+                    {
+                        await JSRuntime.InvokeVoidAsync("Notifications.showError", 
+                            "Price cannot be negative.");
+                        return;
+                    }
+                    // Format to 2 decimal places and save as string
+                    valueToSave = parsed.ToString("F2");
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("Notifications.showError", 
+                        "Please enter a valid numeric value.");
+                    return;
+                }
+            }
+
+            switch (fieldName)
+            {
+                case "ProjectActualPrice":
+                    project.ProjectActualPrice = valueToSave;
+                    break;
+                case "ProjectIndicative":
+                    project.ProjectIndicative = valueToSave;
+                    break;
+            }
+
+            await ProjectService.UpdateProject(project);
+            editingFields[fieldName] = false;
+            originalValues.Remove(fieldName);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("Notifications.showError", 
+                $"Error saving field: {ex.Message}");
+        }
+        finally
+        {
+            savingFields[fieldName] = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleDecimalFieldKeyDown(KeyboardEventArgs e, string fieldName, string value)
+    {
+        if (e.Key == "Enter")
+        {
+            await SaveDecimalField(fieldName, value);
+        }
+        else if (e.Key == "Escape")
+        {
+            CancelEdit(fieldName);
+        }
+    }
+
+    private string FormatCurrency(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "-";
+
+        if (decimal.TryParse(value, out decimal parsed))
+        {
+            return parsed.ToString("N2"); // Format with thousand separators and 2 decimal places
+        }
+
+        return value; // Return as-is if not a valid number
+    }
 
     private bool IsEditing(string fieldName) => editingFields.ContainsKey(fieldName) && editingFields[fieldName];
     private bool IsSaving(string fieldName) => savingFields.ContainsKey(fieldName) && savingFields[fieldName];
