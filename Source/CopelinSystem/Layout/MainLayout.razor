@@ -358,19 +358,14 @@
         </div>
     </Authorized>
     <NotAuthorized>
-        <div class="container py-5">
-            <div class="row justify-content-center">
-                <div class="col-md-6">
-                    <div class="card shadow">
-                        <div class="card-body text-center py-5">
-                            <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
-                            <h3>Authentication Required</h3>
-                            <p class="text-muted">Please authenticate with Windows to access this application.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+        @{
+            try 
+            {
+                var returnUrl = Navigation.Uri;
+                Navigation.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(returnUrl)}", true);
+            }
+            catch {}
+        }
     </NotAuthorized>
 </AuthorizeView>
 
@@ -401,12 +396,21 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Get online users (active in last 15 minutes)
-        onlineUsers = await AuthService.GetAllUsers();
-        onlineUsers = onlineUsers
-            .Where(u => u.LastActive.HasValue &&
-                        u.LastActive.Value > DateTime.Now.AddMinutes(-15))
-            .ToList();
+        try
+        {
+            // Get online users (active in last 15 minutes)
+            onlineUsers = await AuthService.GetAllUsers();
+            onlineUsers = onlineUsers
+                .Where(u => u.LastActive.HasValue &&
+                            u.LastActive.Value > DateTime.Now.AddMinutes(-15))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            // Start gracefully even if DB is outdated
+            Console.WriteLine($"Error fetching online users: {ex.Message}");
+            onlineUsers = new List<User>();
+        }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -422,20 +426,27 @@
             var userIdClaim = user.FindFirst("UserId");
             if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
             {
-                currentUser = await AuthService.GetUserById(userId);
-                if (currentUser != null)
+                try
                 {
-                    canManageUsers = await PermissionService.UserHasPermission(currentUser, "ManageUsers");
-                    canManageEmployees = await PermissionService.UserHasPermission(currentUser, "ManageEmployees");
-                    canManageClients = await PermissionService.UserHasPermission(currentUser, "ManageClients");
-                    canManageConsultants = await PermissionService.UserHasPermission(currentUser, "ManageConsultants");
-                    canManageContractors = await PermissionService.UserHasPermission(currentUser, "ManageContractors");
-                    canCreateProjects = await PermissionService.UserHasPermission(currentUser, "CreateProjects");
-                    canManageTaskDurations = await PermissionService.UserHasPermission(currentUser, "ManageTaskDurations");
-                    canManageExternalRegion = await PermissionService.UserHasPermission(currentUser, "ManageExternalRegion");
-                    canViewReports = await PermissionService.UserHasPermission(currentUser, "ViewReports");
-                    canViewEstimatorTools = await PermissionService.UserHasPermission(currentUser, "ViewEstimatorTools");
-                    canManageHelp = await PermissionService.UserHasPermission(currentUser, "ManageHelp");
+                    currentUser = await AuthService.GetUserById(userId);
+                    if (currentUser != null)
+                    {
+                        canManageUsers = await PermissionService.UserHasPermission(currentUser, "ManageUsers");
+                        canManageEmployees = await PermissionService.UserHasPermission(currentUser, "ManageEmployees");
+                        canManageClients = await PermissionService.UserHasPermission(currentUser, "ManageClients");
+                        canManageConsultants = await PermissionService.UserHasPermission(currentUser, "ManageConsultants");
+                        canManageContractors = await PermissionService.UserHasPermission(currentUser, "ManageContractors");
+                        canCreateProjects = await PermissionService.UserHasPermission(currentUser, "CreateProjects");
+                        canManageTaskDurations = await PermissionService.UserHasPermission(currentUser, "ManageTaskDurations");
+                        canManageExternalRegion = await PermissionService.UserHasPermission(currentUser, "ManageExternalRegion");
+                        canViewReports = await PermissionService.UserHasPermission(currentUser, "ViewReports");
+                        canViewEstimatorTools = await PermissionService.UserHasPermission(currentUser, "ViewEstimatorTools");
+                        canManageHelp = await PermissionService.UserHasPermission(currentUser, "ManageHelp");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error fetching current user: {ex.Message}");
                 }
             }
         }

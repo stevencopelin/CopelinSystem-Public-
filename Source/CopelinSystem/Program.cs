@@ -37,40 +37,13 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 // Add Authentication
-var authBuilder = builder.Services.AddAuthentication(options =>
-{
-    // In Development, default to Cookies to allow the Login page to work
-    // In Production (Windows), default to IIS/Windows Auth
-    if (builder.Environment.IsDevelopment())
+// Add Authentication
+builder.Services.AddAuthentication("Cookies")
+    .AddCookie("Cookies", options => 
     {
-        options.DefaultScheme = "Cookies";
-        options.DefaultChallengeScheme = "Cookies";
-    }
-    else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
-    {
-        options.DefaultScheme = IISDefaults.AuthenticationScheme;
-    }
-    else
-    {
-        options.DefaultScheme = "Cookies";
-    }
-});
-
-// Always add Cookie scheme so DevAuthController works
-authBuilder.AddCookie("Cookies", options => 
-{
-    options.LoginPath = "/login";
-    options.ExpireTimeSpan = TimeSpan.FromDays(30);
-});
-
-if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
-{
-    // Ensure IIS/Windows Auth is registered if on Windows
-    // builder.Services.AddAuthentication(IISDefaults.AuthenticationScheme);
-    // The above line is already handled by the initial AddAuthentication call if passing string, 
-    // but IISDefaults.AuthenticationScheme is a constant string "Windows".
-    // We don't need to call AddAuthentication twice.
-}
+        options.LoginPath = "/login";
+        options.ExpireTimeSpan = TimeSpan.FromDays(30);
+    });
 builder.Services.AddAuthorization();
 
 // Add HttpContextAccessor to access user info in components
@@ -90,6 +63,7 @@ builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
 });
 
 // Register services - IMPORTANT: Order matters here!
+builder.Services.AddScoped<CopelinSystem.Services.PasswordHasher>();
 builder.Services.AddScoped<CopelinSystem.Services.AuthenticationService>();
 builder.Services.AddScoped<AuthenticationStateProvider, CopelinAuthStateProvider>();
 builder.Services.AddScoped<ProjectService>();
@@ -149,6 +123,42 @@ using (var scope = app.Services.CreateScope())
     {
         Console.WriteLine($"Error seeding permissions: {ex.Message}");
         // Continue startup anyway
+    }
+
+    // Seed Passwords if needed
+    try 
+    {
+        Console.WriteLine("--- STARTING PASSWORD SEEDING CHECK ---");
+        var authService = scope.ServiceProvider.GetRequiredService<CopelinSystem.Services.AuthenticationService>();
+        var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationDbContext>>();
+        
+        using var context = dbContextFactory.CreateDbContext();
+        
+        // Ensure Admin user exists so we can always login
+        await authService.EnsureAdminUserExists();
+        
+        var usersWithoutPassword = await context.Users
+            .Where(u => u.PasswordHash == null)
+            .ToListAsync();
+
+        if (usersWithoutPassword.Any())
+        {
+            Console.WriteLine($"Seeding passwords for {usersWithoutPassword.Count} users...");
+            // Use a default password for migration
+            string defaultPassword = "Password123!";
+            
+            foreach (var user in usersWithoutPassword)
+            {
+                // We need to use AuthService to set password to ensure hashing
+                await authService.SetPassword(user.UserId, defaultPassword);
+            }
+            Console.WriteLine("Passwords seeded successfully.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"--- ERROR SEEDING PASSWORDS: {ex.Message} ---");
+        Console.WriteLine(ex.StackTrace);
     }
 }
 

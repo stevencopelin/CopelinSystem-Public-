@@ -1,37 +1,24 @@
-
-# Visual Studio
+# Visual Studio 2022
 .vs/
-[Bb]in/
-[Oo]bj/
-*.user
-*.suo
-*.user
-*.sln.docstates
-
-# VS Code
 .vscode/
 
-# OS
-.DS_Store
-
-# Logs
-*.log
-
-# .NET / Core
-project.lock.json
-project.fragment.lock.json
-artifacts/
-
-# Test results
-TestResult.xml
+# Build results
+[Bb]in/
+[Oo]bj/
 
 # User-specific files
-*.rsuser
-*.suo
 *.user
 *.userosscache
-*.userprefs
+*.sln.docstates
 
-# Publish
-publish/
-*.publishsettings
+# Sensitive files
+appsettings.Development.json
+appsettings.local.json
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Other
+*.log
+*.lock.json

@@ -56,37 +56,51 @@ namespace CopelinSystem.Services
                 return _cachedState;
             }
 
-            var httpContext = _httpContextAccessor.HttpContext;
-
-            if (httpContext?.User?.Identity?.IsAuthenticated == true)
+            try
             {
-                // Get or create user from Windows/AD identity
-                _currentUser = await _authService.GetOrCreateUserFromWindowsIdentity(
-                    httpContext.User.Identity);
+                var httpContext = _httpContextAccessor.HttpContext;
 
-                if (_currentUser != null)
+                if (httpContext?.User?.Identity?.IsAuthenticated == true)
                 {
-                    // Create claims with user info
-                    var claims = new List<Claim>
+                    // Get user from Principal (supports both Cookies and Windows)
+                    _currentUser = await _authService.GetUserFromPrincipal(httpContext.User);
+
+                    if (_currentUser != null)
                     {
-                        new Claim(ClaimTypes.Name, _currentUser.DisplayName),
-                        new Claim(ClaimTypes.Email, _currentUser.Email ?? ""),
-                        new Claim(ClaimTypes.NameIdentifier, _currentUser.UserId.ToString()),
-                        new Claim("UserId", _currentUser.UserId.ToString()),
-                    new Claim(ClaimTypes.Role, _currentUser.Role.ToString()),
-                        new Claim("Region", _currentUser.Region ?? "")
-                    };
+                        // Create claims with user info
+                        var claims = new List<Claim>
+                        {
+                            new Claim(ClaimTypes.Name, _currentUser.DisplayName),
+                            new Claim(ClaimTypes.Email, _currentUser.Email ?? ""),
+                            new Claim(ClaimTypes.NameIdentifier, _currentUser.UserId.ToString()),
+                            new Claim("UserId", _currentUser.UserId.ToString()),
+                            new Claim(ClaimTypes.Role, _currentUser.Role.ToString()),
+                            new Claim("Region", _currentUser.Region ?? "")
+                        };
 
-                    var identity = new ClaimsIdentity(claims, "Windows");
-                    var principal = new ClaimsPrincipal(identity);
+                        // Use the original authentication type (e.g. "Cookies" or "Windows") or default to "Custom"
+                        var authType = httpContext.User.Identity.AuthenticationType ?? "Custom";
+                        var identity = new ClaimsIdentity(claims, authType);
+                        var principal = new ClaimsPrincipal(identity);
 
-                    _cachedState = new AuthenticationState(principal);
-                    return _cachedState;
+                        _cachedState = new AuthenticationState(principal);
+                        return _cachedState;
+                    }
                 }
             }
+            catch (ObjectDisposedException)
+            {
+                // HttpContext is disposed (likely in SignalR circuit after initial request)
+                // If we haven't cached a user by now, we assume unauthenticated.
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Auth Provider Error: {ex.Message}");
+            }
 
-            // Not authenticated
-            return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+            // Not authenticated - Cache this result to avoid retrying HttpContext
+            _cachedState = new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+            return _cachedState;
         }
 
         public void NotifyAuthenticationStateChanged()

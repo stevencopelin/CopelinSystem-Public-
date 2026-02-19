@@ -28,6 +28,7 @@ namespace CopelinSystem.Models
         public string? AdSid { get; set; }       // Security Identifier from AD
 
         public byte UserType { get; set; }  // Maps to UserRole enum
+        public string? PasswordHash { get; set; } // Password hash for username/password authentication
         public string? Avatar { get; set; }
         public DateTime DateCreated { get; set; }
         public DateTime? LastActive { get; set; }
@@ -82,6 +83,9 @@ namespace CopelinSystem.Models
                 .HasColumnName("UserType")
                 .HasDefaultValue(1)  // Default to ReadOnly
                 .HasComment("1=ReadOnly, 2=Estimator, 3=Manager, 4=PrincipalEstimator, 5=Admin");
+
+            builder.Property(u => u.PasswordHash)
+                .HasColumnName("PasswordHash");
 
             builder.Property(u => u.Avatar)
                 .HasColumnName("Avatar")

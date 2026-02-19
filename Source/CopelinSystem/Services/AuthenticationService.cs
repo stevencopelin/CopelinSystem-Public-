@@ -12,10 +12,58 @@ namespace CopelinSystem.Services
     public class AuthenticationService
     {
         private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
+        private readonly PasswordHasher _passwordHasher;
 
-        public AuthenticationService(IDbContextFactory<ApplicationDbContext> contextFactory)
+        public AuthenticationService(IDbContextFactory<ApplicationDbContext> contextFactory, PasswordHasher passwordHasher)
         {
             _contextFactory = contextFactory;
+            _passwordHasher = passwordHasher;
+        }
+
+        /// <summary>
+        /// Validate user credentials (username/password)
+        /// </summary>
+        public async Task<User?> ValidateUser(string username, string password)
+        {
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+                return null;
+
+            using var context = await _contextFactory.CreateDbContextAsync();
+            
+            // Find by Email OR AdUsername
+            var user = await context.Users.FirstOrDefaultAsync(u => 
+                u.Email == username || 
+                u.AdUsername == username);
+
+            if (user == null)
+                return null;
+
+            // Check password
+            if (!string.IsNullOrEmpty(user.PasswordHash) && _passwordHasher.VerifyPassword(user.PasswordHash, password))
+            {
+                // Update LastActive
+                user.LastActive = DateTime.Now;
+                context.Users.Update(user);
+                await context.SaveChangesAsync();
+                
+                return user;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Set password for a user
+        /// </summary>
+        public async Task SetPassword(int userId, string password)
+        {
+            using var context = await _contextFactory.CreateDbContextAsync();
+            var user = await context.Users.FindAsync(userId);
+            if (user != null)
+            {
+                user.PasswordHash = _passwordHasher.HashPassword(password);
+                await context.SaveChangesAsync();
+            }
         }
 
         /// <summary>
