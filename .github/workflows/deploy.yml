@@ -1,0 +1,47 @@
+name: Build and Deploy to IIS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x' # Targeting .NET 10 as per CopelinSystem.csproj
+
+      - name: Restore dependencies
+        run: dotnet restore Source/CopelinSystem/CopelinSystem.csproj
+
+      - name: Build
+        run: dotnet build Source/CopelinSystem/CopelinSystem.csproj --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish Source/CopelinSystem/CopelinSystem.csproj --configuration Release --output ./publish --no-build
+
+      - name: Stop IIS Site
+        run: |
+          Import-Module WebAdministration
+          Stop-WebSite -Name "CopelinSystem"
+        shell: powershell
+
+      - name: Copy files to IIS
+        run: |
+          # Copy files (Mirror mode, no logging, retry 3 times, wait 5s)
+          robocopy ./publish C:/inetpub/wwwroot/CopelinSystem /MIR /NFL /NDL /NJH /NJS /NC /NS /NP /R:3 /W:5
+          if ($LASTEXITCODE -le 7) { exit 0 } # robocopy uses exit codes 0-7 for success
+        shell: powershell
+
+      - name: Start IIS Site
+        run: |
+          Import-Module WebAdministration
+          Start-WebSite -Name "CopelinSystem"
+        shell: powershell
