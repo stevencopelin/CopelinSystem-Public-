@@ -98,7 +98,7 @@ builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(@"C:\inetpub\wwwroot\CopelinSystem\keys"))
-    .SetApplicationName("CopelinSystem");
+    .SetApplicationName("CopelinSystem"); // Persist keys to file system for IIS deployment
 
 var app = builder.Build();
     
