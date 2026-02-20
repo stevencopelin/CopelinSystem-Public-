@@ -31,7 +31,7 @@ jobs:
       - name: Stop IIS Site
         run: |
           Import-Module WebAdministration
-          Stop-WebSite -Name "CopelinSystem"
+          Stop-WebSite -Name "Default Web Site"
         shell: powershell
 
       - name: Copy files to IIS
@@ -44,5 +44,5 @@ jobs:
       - name: Start IIS Site
         run: |
           Import-Module WebAdministration
-          Start-WebSite -Name "CopelinSystem"
+          Start-WebSite -Name "Default Web Site"
         shell: powershell
