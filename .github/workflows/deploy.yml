@@ -31,18 +31,20 @@ jobs:
       - name: Stop IIS Site
         run: |
           Import-Module WebAdministration
-          Stop-WebSite -Name "Default Web Site"
+          Stop-WebSite -Name "CopelinSystem"
+          Stop-WebAppPool -Name "CopelinSystem"
+          Start-Sleep -Seconds 3
         shell: powershell
 
       - name: Copy files to IIS
         run: |
-          # Copy files (Mirror mode, no logging, retry 3 times, wait 5s)
-          robocopy ./publish C:/inetpub/wwwroot/CopelinSystem /MIR /NFL /NDL /NJH /NJS /NC /NS /NP /R:3 /W:5
-          if ($LASTEXITCODE -le 7) { exit 0 } # robocopy uses exit codes 0-7 for success
+          robocopy ./publish C:/inetpub/wwwroot/CopelinSystem /MIR /NFL /NDL /NJH /NJS /NC /NS /NP /XF *.pdb
+          if ($LASTEXITCODE -le 7) { exit 0 }
         shell: powershell
 
       - name: Start IIS Site
         run: |
           Import-Module WebAdministration
-          Start-WebSite -Name "Default Web Site"
+          Start-WebAppPool -Name "CopelinSystem"
+          Start-WebSite -Name "CopelinSystem"
         shell: powershell
