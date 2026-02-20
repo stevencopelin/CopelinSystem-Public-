@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Server.IISIntegration;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 
 
 // Robust root finding for Parallels/Mac shared folders
@@ -95,8 +96,12 @@ builder.Services.AddMemoryCache();
 // Add cascading authentication state
 builder.Services.AddCascadingAuthenticationState();
 
-var app = builder.Build();
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(@"C:\inetpub\wwwroot\CopelinSystem\keys"))
+    .SetApplicationName("CopelinSystem");
 
+var app = builder.Build();
+    
 // Ensure permissions are seeded
 using (var scope = app.Services.CreateScope())
 {
