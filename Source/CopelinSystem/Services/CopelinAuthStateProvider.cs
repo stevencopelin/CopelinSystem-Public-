@@ -92,15 +92,16 @@ namespace CopelinSystem.Services
             {
                 // HttpContext is disposed (likely in SignalR circuit after initial request)
                 // If we haven't cached a user by now, we assume unauthenticated.
+                if (_cachedState != null) return _cachedState; 
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Auth Provider Error: {ex.Message}");
             }
 
-            // Not authenticated - Cache this result to avoid retrying HttpContext
-            _cachedState = new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
-            return _cachedState;
+            // Not authenticated - DON'T cache this result to avoid retrying HttpContext
+            //_cachedState = new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+            return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }
 
         public void NotifyAuthenticationStateChanged()
