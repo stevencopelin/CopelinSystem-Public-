@@ -17,6 +17,7 @@
   <ItemGroup>
     <Content Include="appsettings.json.home" />
     <Content Include="appsettings.json.work" />
+    <Content Include="web.config" />
   </ItemGroup>
 
   <ItemGroup>
