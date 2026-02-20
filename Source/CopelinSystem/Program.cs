@@ -176,7 +176,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 
 // Add authentication and authorization middleware - ORDER IS IMPORTANT
 app.UseAuthentication();
