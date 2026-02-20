@@ -38,7 +38,7 @@ jobs:
 
       - name: Copy files to IIS
         run: |
-          robocopy ./publish C:/inetpub/wwwroot/CopelinSystem /MIR /NFL /NDL /NJH /NJS /NC /NS /NP /XF *.pdb
+          robocopy ./publish C:/inetpub/wwwroot/CopelinSystem /MIR /NFL /NDL /NJH /NJS /NC /NS /NP /XF *.pdb /XD keys
           if ($LASTEXITCODE -le 7) { exit 0 }
         shell: powershell
 
