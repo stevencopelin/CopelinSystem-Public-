@@ -42,11 +42,6 @@ jobs:
           if ($LASTEXITCODE -le 7) { exit 0 }
         shell: powershell
 
-        - name: Copy appsettings
-        run: |
-          Copy-Item "Source/CopelinSystem/appsettings.json" -Destination "./publish/appsettings.json" -Force
-        shell: powershell
-
       - name: Copy appsettings
         run: Copy-Item "Source/CopelinSystem/appsettings.json" -Destination "C:/inetpub/wwwroot/CopelinSystem/appsettings.json"
         shell: powershell
