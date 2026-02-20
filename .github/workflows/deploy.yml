@@ -26,7 +26,7 @@ jobs:
         run: dotnet build Source/CopelinSystem/CopelinSystem.csproj --configuration Release --no-restore
 
       - name: Publish
-        run: dotnet publish Source/CopelinSystem/CopelinSystem.csproj --configuration Release --output ./publish --no-build
+        run: dotnet publish Source/CopelinSystem/CopelinSystem.csproj --configuration Release --output ./publish 
 
       - name: Stop IIS Site
         run: |
@@ -40,6 +40,15 @@ jobs:
         run: |
           robocopy ./publish C:/inetpub/wwwroot/CopelinSystem /MIR /NFL /NDL /NJH /NJS /NC /NS /NP /XF *.pdb
           if ($LASTEXITCODE -le 7) { exit 0 }
+        shell: powershell
+
+        - name: Copy appsettings
+        run: |
+          Copy-Item "Source/CopelinSystem/appsettings.json" -Destination "./publish/appsettings.json" -Force
+        shell: powershell
+
+      - name: Copy appsettings
+        run: Copy-Item "Source/CopelinSystem/appsettings.json" -Destination "C:/inetpub/wwwroot/CopelinSystem/appsettings.json"
         shell: powershell
 
       - name: Start IIS Site
