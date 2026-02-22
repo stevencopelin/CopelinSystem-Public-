@@ -10,10 +10,12 @@ namespace CopelinSystem.Services
     public class UserService
     {
         private readonly IDbContextFactory<ApplicationDbContext> _contextFactory;
+        private readonly PasswordHasher _passwordHasher;
 
-        public UserService(IDbContextFactory<ApplicationDbContext> contextFactory)
+        public UserService(IDbContextFactory<ApplicationDbContext> contextFactory, PasswordHasher passwordHasher)
         {
             _contextFactory = contextFactory;
+            _passwordHasher = passwordHasher;
         }
 
         /// <summary>
@@ -40,7 +42,7 @@ namespace CopelinSystem.Services
         /// <summary>
         /// Update existing user
         /// </summary>
-        public async Task<bool> UpdateUser(User user)
+        public async Task<bool> UpdateUser(User user, string? rawPassword = null)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
             
@@ -57,6 +59,13 @@ namespace CopelinSystem.Services
             existingUser.AdUsername = user.AdUsername;
             existingUser.AdDomain = user.AdDomain;
             existingUser.AdSid = user.AdSid;
+            
+            // Only update password if a new one was provided
+            if (!string.IsNullOrWhiteSpace(rawPassword))
+            {
+                existingUser.PasswordHash = _passwordHasher.HashPassword(rawPassword);
+            }
+
             // Note: We don't update DateCreated or LastActive here usually
 
             context.Users.Update(existingUser);
@@ -67,12 +76,18 @@ namespace CopelinSystem.Services
         /// <summary>
         /// Create a new user
         /// </summary>
-        public async Task<User> CreateUser(User user)
+        public async Task<User> CreateUser(User user, string? rawPassword = null)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
             
             user.DateCreated = DateTime.Now;
             user.LastActive = DateTime.Now;
+
+            // Hash initial password if provided
+            if (!string.IsNullOrWhiteSpace(rawPassword))
+            {
+                user.PasswordHash = _passwordHasher.HashPassword(rawPassword);
+            }
 
             context.Users.Add(user);
             await context.SaveChangesAsync();

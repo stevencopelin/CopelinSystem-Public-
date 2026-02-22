@@ -162,34 +162,53 @@
                                         </div>
                                     </div>
 
-                                    <!-- Active Directory -->
-                                    <h6 class="text-primary border-bottom pb-2 mb-3 mt-4"><i class="fab fa-windows mr-2"></i> Active Directory Details</h6>
-                                    
-                                    @if(isEditing)
-                                    {
-                                        <div class="alert alert-warning py-2 mb-3">
-                                            <i class="fas fa-exclamation-triangle mr-1"></i> <strong>Warning:</strong> Changing these values may prevent the user from logging in.
-                                        </div>
-                                    }
+                                    <!-- Authentication Methods -->
+                                    <h6 class="text-primary border-bottom pb-2 mb-3 mt-4"><i class="fas fa-lock mr-2"></i> Authentication Methods</h6>
                                     
                                     <div class="row">
-                                        <div class="col-md-6">
-                                            <div class="form-group">
-                                                <label class="font-weight-bold">Directory Domain</label>
-                                                <input type="text" class="form-control" @bind="currentUserEdit.AdDomain" placeholder="e.g., COPELIN" />
+                                        <!-- Local Credentials -->
+                                        <div class="col-md-6 border-right pr-4">
+                                            <h6 class="font-weight-bold mb-3"><i class="fas fa-user-shield text-muted mr-1"></i> Local Credentials</h6>
+                                            <p class="small text-muted mb-3">Users can log in using their email address and a local password.</p>
+                                            
+                                            <div class="form-group mb-0">
+                                                <label class="font-weight-bold">Password</label>
+                                                <div class="input-group">
+                                                    <div class="input-group-prepend">
+                                                        <span class="input-group-text"><i class="fas fa-key"></i></span>
+                                                    </div>
+                                                    <input type="password" class="form-control" @bind="newPassword" placeholder="@(isEditing ? "Leave blank to keep current" : "Enter a secure password")" />
+                                                </div>
                                             </div>
                                         </div>
-                                        <div class="col-md-6">
-                                            <div class="form-group">
-                                                <label class="font-weight-bold">Directory Username</label>
-                                                <input type="text" class="form-control" @bind="currentUserEdit.AdUsername" placeholder="e.g., jsmith" />
+
+                                        <!-- Active Directory (SSO) -->
+                                        <div class="col-md-6 pl-4">
+                                            <h6 class="font-weight-bold mb-3"><i class="fab fa-windows text-muted mr-1"></i> Active Directory (SSO)</h6>
+                                            <p class="small text-muted mb-3">Allow users to log in securely using their Windows domain credentials.</p>
+                                            
+                                            @if(isEditing)
+                                            {
+                                                <div class="alert alert-warning py-1 px-2 mb-3 small">
+                                                    <i class="fas fa-exclamation-triangle mr-1"></i> Changing these values may prevent the user from logging in via AD.
+                                                </div>
+                                            }
+                                            
+                                            <div class="form-group mb-2">
+                                                <label class="font-weight-bold small mb-1">Directory Domain</label>
+                                                <input type="text" class="form-control form-control-sm" @bind="currentUserEdit.AdDomain" placeholder="e.g., COPELIN" />
+                                            </div>
+                                            
+                                            <div class="form-group mb-2">
+                                                <label class="font-weight-bold small mb-1">Directory Username</label>
+                                                <input type="text" class="form-control form-control-sm" @bind="currentUserEdit.AdUsername" placeholder="e.g., jsmith" />
+                                            </div>
+                                            
+                                            <div class="form-group mb-0">
+                                                <label class="font-weight-bold small mb-1">Security Identifier (SID)</label>
+                                                <input type="text" class="form-control form-control-sm" @bind="currentUserEdit.AdSid" placeholder="Auto-populated upon first Windows login" />
                                             </div>
                                         </div>
-                                    </div>
-                                    <div class="form-group mb-0">
-                                        <label class="font-weight-bold">Security Identifier (SID)</label>
-                                        <input type="text" class="form-control" @bind="currentUserEdit.AdSid" placeholder="Auto-populated upon first Windows login" />
-                                        <small class="form-text text-muted">Leave blank for new users; the system will capture it upon their first domain login.</small>
                                     </div>
                                 </div>
                                 <div class="modal-footer bg-light">
@@ -241,6 +260,7 @@
     private bool isEditing = false;
     private User currentUserEdit = new();
     private int userTypeInt;
+    private string newPassword = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -280,6 +300,7 @@
             UserType = (byte)UserRole.ReadOnly // Default
         };
         userTypeInt = (int)UserRole.ReadOnly;
+        newPassword = "";
         showModal = true;
     }
 
@@ -305,6 +326,7 @@
         
         // Convert byte UserType to int for dropdown binding
         userTypeInt = currentUserEdit.UserType;
+        newPassword = "";
         showModal = true;
     }
 
@@ -329,10 +351,10 @@
 
         if (isEditing)
         {
-            bool confirmed = await JSRuntime.InvokeAsync<bool>("Notifications.showConfirm", "Are you sure you want to save these changes? Changing AD details may affect login.");
+            bool confirmed = await JSRuntime.InvokeAsync<bool>("Notifications.showConfirm", "Are you sure you want to save these changes?");
             if (confirmed)
             {
-                await UserService.UpdateUser(currentUserEdit);
+                await UserService.UpdateUser(currentUserEdit, newPassword);
                 await LoadData();
                 CloseModal();
                 await JSRuntime.InvokeVoidAsync("Notifications.showSuccess", "User updated successfully!");
@@ -341,7 +363,7 @@
         else
         {
             // Creation logic
-            await UserService.CreateUser(currentUserEdit);
+            await UserService.CreateUser(currentUserEdit, newPassword);
             await LoadData();
             CloseModal();
             await JSRuntime.InvokeVoidAsync("Notifications.showSuccess", "User created successfully!");
