@@ -65,6 +65,21 @@ namespace CopelinSystem.Services
         }
 
         /// <summary>
+        /// Create a new user
+        /// </summary>
+        public async Task<User> CreateUser(User user)
+        {
+            using var context = await _contextFactory.CreateDbContextAsync();
+            
+            user.DateCreated = DateTime.Now;
+            user.LastActive = DateTime.Now;
+
+            context.Users.Add(user);
+            await context.SaveChangesAsync();
+            return user;
+        }
+
+        /// <summary>
         /// Delete user (or deactivate if preferred, but this deletes)
         /// </summary>
         public async Task<bool> DeleteUser(int userId)
