@@ -49,6 +49,47 @@ namespace CopelinSystem.Controllers
             return Redirect(returnUrl ?? "/");
         }
 
+        [HttpGet("windows-login")]
+        public async Task<IActionResult> WindowsLogin([FromQuery] string? returnUrl = "/")
+        {
+            var identity = HttpContext.User.Identity;
+
+#pragma warning disable CA1416 // Validate platform compatibility
+            // Check if Windows Auth was successful at the IIS level
+            if (identity is System.Security.Principal.WindowsIdentity windowsIdentity && windowsIdentity.IsAuthenticated)
+            {
+                var user = await _authService.GetOrCreateUserFromWindowsIdentity(windowsIdentity);
+
+                if (user != null)
+                {
+                    // Build local claims to authenticate via our cookie scheme
+                    var claims = new List<Claim>
+                    {
+                        new Claim(ClaimTypes.Name, user.DisplayName),
+                        new Claim(ClaimTypes.Email, user.Email ?? ""),
+                        new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
+                        new Claim("UserId", user.UserId.ToString()),
+                        new Claim(ClaimTypes.Role, user.Role.ToString()),
+                        new Claim("Region", user.Region ?? ""),
+                        new Claim("DisplayName", user.DisplayName)
+                    };
+
+                    var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                    var principal = new ClaimsPrincipal(claimsIdentity);
+
+                    // Sign in with Cookies
+                    await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+
+                    return Redirect(returnUrl ?? "/");
+                }
+            }
+#pragma warning restore CA1416 // Validate platform compatibility
+
+            // Fallback: If no Windows Identity exists or it failed to map to a user, send them back to manual login
+            // flag adCheck=false prevents an infinite redirect loop
+            return Redirect($"/login?adCheck=false&returnUrl={System.Net.WebUtility.UrlEncode(returnUrl)}");
+        }
+
         [HttpGet("logout")]
         public async Task<IActionResult> Logout()
         {

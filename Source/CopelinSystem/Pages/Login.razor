@@ -12,54 +12,64 @@
     <!-- /.login-logo -->
     <div class="card">
         <div class="card-body login-card-body">
-            <p class="login-box-msg">Sign in to start your session</p>
+            @if (AdCheck != "false")
+            {
+                <div class="text-center py-4">
+                    <i class="fas fa-spinner fa-spin fa-2x text-primary mb-3"></i>
+                    <p class="text-muted">Attempting to sign in with Active Directory...</p>
+                </div>
+            }
+            else
+            {
+                <p class="login-box-msg">Sign in to start your session</p>
 
-            <form action="/account/login" method="post">
-                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                
-                @if (!string.IsNullOrEmpty(ErrorMessage))
-                {
-                    <div class="alert alert-danger">
-                        @ErrorMessage
-                    </div>
-                }
+                <form action="/account/login" method="post">
+                    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                    
+                    @if (!string.IsNullOrEmpty(ErrorMessage))
+                    {
+                        <div class="alert alert-danger">
+                            @ErrorMessage
+                        </div>
+                    }
 
-                <div class="input-group mb-3">
-                    <input type="text" name="username" class="form-control" placeholder="Email or Username" required autofocus>
-                    <div class="input-group-append">
-                        <div class="input-group-text">
-                            <span class="fas fa-envelope"></span>
+                    <div class="input-group mb-3">
+                        <input type="text" name="username" class="form-control" placeholder="Email or AD Username" required autofocus>
+                        <div class="input-group-append">
+                            <div class="input-group-text">
+                                <span class="fas fa-envelope"></span>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="input-group mb-3">
-                    <input type="password" name="password" class="form-control" placeholder="Password" required>
-                    <div class="input-group-append">
-                        <div class="input-group-text">
-                            <span class="fas fa-lock"></span>
+                    <div class="input-group mb-3">
+                        <input type="password" name="password" class="form-control" placeholder="Password" required>
+                        <div class="input-group-append">
+                            <div class="input-group-text">
+                                <span class="fas fa-lock"></span>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="row">
-                    <div class="col-8">
-                        <div class="icheck-primary">
-                            <input type="checkbox" id="remember">
-                            <label for="remember">
-                                Remember Me
-                            </label>
+                    <div class="row">
+                        <div class="col-8">
+                            <div class="icheck-primary">
+                                <input type="checkbox" id="remember">
+                                <label for="remember">
+                                    Remember Me
+                                </label>
+                            </div>
                         </div>
+                        <!-- /.col -->
+                        <div class="col-4">
+                            <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+                        </div>
+                        <!-- /.col -->
                     </div>
-                    <!-- /.col -->
-                    <div class="col-4">
-                        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
-                    </div>
-                    <!-- /.col -->
-                </div>
-            </form>
+                </form>
 
-            <p class="mb-1 mt-3">
-                <a href="#">I forgot my password</a>
-            </p>
+                <p class="mb-1 mt-3">
+                    <a href="#">I forgot my password</a>
+                </p>
+            }
         </div>
         <!-- /.login-card-body -->
     </div>
@@ -71,4 +81,17 @@
 
     [SupplyParameterFromQuery(Name = "error")]
     public string? ErrorMessage { get; set; }
+
+    [SupplyParameterFromQuery(Name = "adCheck")]
+    public string? AdCheck { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // If we haven't checked AD yet, trigger the redirect
+        if (AdCheck != "false")
+        {
+            var redirectUrl = $"/account/windows-login?returnUrl={System.Net.WebUtility.UrlEncode(ReturnUrl ?? "/")}";
+            Navigation.NavigateTo(redirectUrl, forceLoad: true);
+        }
+    }
 }
